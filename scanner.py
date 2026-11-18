@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only Verdaccio storage scanner; Python standard library only."""
-import os, re, json, time, html, hashlib, tarfile, logging, urllib.request, urllib.error
+import os, re, json, time, html, hashlib, tarfile, logging, shutil, resource, urllib.request, urllib.error
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import Counter
@@ -274,10 +274,20 @@ def build_report(records, tarballs, skipped):
     summarize(report)
     return report
 
+def human_size(size):
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024: return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
+
+def peak_memory_mb():
+    return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
+
 def esc(x):
     return html.escape(str(x if x is not None else ""), quote=True)
 
-def render_html(report):
+def render_html(report, out):
+    """Write the HTML report incrementally, the report can be very large."""
     s = report["summary"]
     cards = [("Unique packages", s["unique_packages"]), ("Package versions", s["package_versions"]),
       ("Tarballs hashed", s["tarballs_scanned"]), ("Vulnerable versions", s["versions_with_vulnerabilities"]),
@@ -297,8 +307,8 @@ def render_html(report):
         ]) + "</tr>")
     sev_html = "".join(f'<div class="card"><small>{k}</small><strong>{s["severity"][k]}</strong></div>' for k in RANK)
     notice = f'<p class="notice">OSV query warning: {esc(report["osv"]["error"])}</p>' if report["osv"].get("error") else ""
-    body = "\n".join(rows) or '<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>'
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    if True:
+        out.write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verdaccio Supply Chain Security</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui, sans-serif}}
 header{{background:#172b4d;color:white;padding:25px max(20px,calc((100vw - 1450px)/2))}}header h1{{margin:0;font-size:24px}}header p{{color:#cbd6e8;margin:5px 0}}
@@ -312,21 +322,28 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
 <section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>NONE</option></select></div>
-<div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{body}</tbody></table></div>
+<div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>""")
+        for row in rows:
+            out.write(row)
+        if not rows:
+            out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
+        out.write(f"""</tbody></table></div>
 <div class="meta">Duration: {s["duration_seconds"]}s · Oversized tarballs skipped: {s["tarballs_skipped_oversize"]} · JSON schema: {esc(report["schema"])}</div>{notice}</section></main>
-<script>const q=document.getElementById('q'),risk=document.getElementById('risk');function f(){{for(const r of document.querySelectorAll('#tbl tbody tr')){{r.hidden=!(r.innerText.toLowerCase().includes(q.value.toLowerCase())&&(!risk.value||r.cells[2].innerText.trim()===risk.value));}}}}q.addEventListener('input',f);risk.addEventListener('change',f);</script></body></html>"""
+<script>const q=document.getElementById('q'),risk=document.getElementById('risk');function f(){{for(const r of document.querySelectorAll('#tbl tbody tr')){{r.hidden=!(r.innerText.toLowerCase().includes(q.value.toLowerCase())&&(!risk.value||r.cells[2].innerText.trim()===risk.value));}}}}q.addEventListener('input',f);risk.addEventListener('change',f);</script></body></html>""")
 
 def write_report(report):
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     jp, hp = OUT/f"report-{stamp}.json", OUT/f"report-{stamp}.html"
-    jp.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    hp.write_text(render_html(report), encoding="utf-8")
+    with jp.open("w", encoding="utf-8") as fh:
+        json.dump(report, fh, ensure_ascii=False, indent=2)
+    with hp.open("w", encoding="utf-8") as fh:
+        render_html(report, fh)
     for src, dst in ((jp, OUT/"latest.json"), (hp, OUT/"index.html")):
         tmp = dst.with_suffix(dst.suffix+".tmp")
-        tmp.write_bytes(src.read_bytes())
+        shutil.copyfile(src, tmp)
         tmp.replace(dst)
-    log.info("Reports written: %s ; %s", hp, jp)
+    log.info("Reports written: %s (%s) ; %s (%s)", hp, human_size(hp.stat().st_size), jp, human_size(jp.stat().st_size))
 
 def run():
     if LOCK.held_by_other() and LOCK.owner_alive():
@@ -346,7 +363,7 @@ def run():
         r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
         progress("reporting", 1, 1, "writing inventory report")
         write_report(r)
-        log.info("Inventory report written, %s package versions", len(records))
+        log.info("Inventory report written, %s package versions, peak_rss=%sMB", len(records), peak_memory_mb())
         progress("osv", 0, len(records), "vulnerability lookup")
         vuln_total, osv_error = scan_vulnerabilities(records)
         r["osv"]["error"] = osv_error
@@ -357,8 +374,9 @@ def run():
         progress("reporting", 1, 1, "writing report")
         write_report(r)
         s = r["summary"]
-        log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s",
-                 s["unique_packages"], s["package_versions"], s["tarballs_scanned"], s["vulnerability_findings"])
+        log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s peak_rss=%sMB",
+                 s["unique_packages"], s["package_versions"], s["tarballs_scanned"],
+                 s["vulnerability_findings"], peak_memory_mb())
         try:
             progress("notifying", 1, 1, "publishing notifications")
             notifier.notify(r)

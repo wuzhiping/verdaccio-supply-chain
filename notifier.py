@@ -116,15 +116,15 @@ def build_clear(report, osv_error):
              f"Findings: CRITICAL={severity.get('CRITICAL', 0)} HIGH={severity.get('HIGH', 0)} "
              f"MEDIUM={severity.get('MEDIUM', 0)} LOW={severity.get('LOW', 0)}",
              f"Vulnerable versions: {summary.get('versions_with_vulnerabilities', 0)} / {summary.get('package_versions', 0)}"]
-    if osv_error:
+    if not osv_enabled:
+        lines.append("OSV lookup disabled: no vulnerability lookup was performed in this run.")
+        title = "SBOM scan finished (OSV disabled)"
+        priority, tags = 2, ["white_check_mark", "grey_question"]
+    elif osv_error:
         lines.append(f"OSV lookup FAILED: {osv_error}")
         lines.append("WARNING: this run is incomplete, an empty result is NOT evidence of zero vulnerabilities.")
         title = "SBOM scan INCOMPLETE (OSV error)"
         priority, tags = 3, ["rotating_light", "skull"]
-    elif not osv_enabled:
-        lines.append("OSV lookup disabled: no vulnerability lookup was performed in this run.")
-        title = "SBOM scan finished (OSV disabled)"
-        priority, tags = 2, ["white_check_mark", "grey_question"]
     else:
         lines.append("Result: no CRITICAL/HIGH vulnerabilities found.")
         title = "SBOM scan OK / 平安"
