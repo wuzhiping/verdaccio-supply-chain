@@ -42,12 +42,18 @@ button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13
 <tr><th>Last scan</th><td id="last">-</td></tr>
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
-<p><a href="/">Open latest report</a></p></section></main>
+<p><a id="report" href="/">Open latest report</a></p></section></main>
 <script>
 const $=id=>document.getElementById(id);
+// resolve relative to the current page so a reverse proxy path prefix keeps working
+const base=new URL('.',location.href).href;
+const api=new URL('api/scan',base).href;
+const token=new URLSearchParams(location.search).get('token');
+const withToken=u=>token?u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(token):u;
+$('report').href=base;
 async function poll(){
  try{
-  const d=await (await fetch('/api/scan',{headers:{Accept:'application/json'}})).json();
+  const d=await (await fetch(withToken(api),{headers:{Accept:'application/json'}})).json();
   const p=d.progress||{};
   $('state').textContent=(d.running?'SCAN RUNNING':'IDLE')+' · phase='+d.phase;
   $('phase').textContent=p.phase||'-';
@@ -64,12 +70,21 @@ async function poll(){
  }catch(e){$('state').textContent='error: '+e}
 }
 $('go').addEventListener('click',async()=>{
- const r=await fetch('/api/scan',{method:'POST'});
- $('gomsg').textContent=r.status===202?'scan scheduled':(r.status===429?'a scan is already running':'failed: HTTP '+r.status);
+ try{
+  const r=await fetch(withToken(api),{method:'POST'});
+  if(r.status===202){$('gomsg').textContent='scan scheduled';}
+  else if(r.status===429){$('gomsg').textContent='a scan is already running';}
+  else{const b=(await r.text()).slice(0,160);$('gomsg').textContent='failed: HTTP '+r.status+' '+(b||'');}
+ }catch(e){$('gomsg').textContent='failed: '+e}
  poll();
 });
 poll();setInterval(poll,2000);
 </script></body></html>"""
+
+
+def matches(path, candidate):
+    """Match a route by suffix so a reverse proxy path prefix keeps working."""
+    return path == candidate or path.endswith(candidate)
 
 
 class ReportHandler(SimpleHTTPRequestHandler):
@@ -166,22 +181,22 @@ class ReportHandler(SimpleHTTPRequestHandler):
 
     def _handle(self, body):
         parsed = urlparse(self.path)
-        if parsed.path == HEALTH_PATH:
+        if matches(parsed.path, HEALTH_PATH):
             self._health()
             return
         if not self._authorized(parsed):
             self._unauthorized()
             return
-        if parsed.path in SCAN_STATUS_PATHS:
+        if any(matches(parsed.path, p) for p in SCAN_STATUS_PATHS):
             self._scan_status()
-            return
-        if parsed.path == PROGRESS_PATH:
-            self._progress_page()
             return
         if TOKEN and "token" in parse_qs(parsed.query):
             clean = dict(parse_qs(parsed.query))
             clean.pop("token", None)
             self._redirect_clean(parsed._replace(query=urlencode(clean, doseq=True)).geturl())
+            return
+        if matches(parsed.path, PROGRESS_PATH):
+            self._progress_page()
             return
         handle = self.send_head()
         if handle is None:
@@ -199,6 +214,23 @@ class ReportHandler(SimpleHTTPRequestHandler):
             return None
         return super().send_head()
 
+    def translate_path(self, path):
+        """Serve report files when a reverse proxy keeps its path prefix."""
+        translated = super().translate_path(path)
+        if os.path.exists(translated):
+            return translated
+        clean = path.split("?", 1)[0].split("#", 1)[0]
+        words = [w for w in clean.split("/") if w]
+        trailing = clean.endswith("/")
+        for i in range(1, len(words) + 1):
+            suffix = "/" + "/".join(words[i:])
+            if trailing and not suffix.endswith("/"):
+                suffix += "/"
+            candidate = super().translate_path(suffix)
+            if os.path.exists(candidate):
+                return candidate
+        return translated
+
     def do_GET(self):
         self._handle(body=True)
 
@@ -207,7 +239,7 @@ class ReportHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != SCAN_PATH:
+        if not matches(parsed.path, SCAN_PATH):
             self._json(404, {"error": "not_found", "path": parsed.path})
             return
         if not self._authorized(parsed):

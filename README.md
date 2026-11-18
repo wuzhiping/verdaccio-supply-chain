@@ -52,6 +52,22 @@ docker compose -f compose.yml up -d --build
 docker compose -f compose.yml logs -f
 ```
 
+## Reverse proxy (subdirectory)
+
+The service works behind a reverse proxy, also when it is mounted under a path prefix such as `https://host/sbom/`:
+
+- The progress page resolves the API relative to its own URL (`new URL('api/scan', location.href)`), so it keeps working under any prefix.
+- API routes (`/api/scan`, `/api/scan/status`, `/progress`, `/healthz`) are matched by path suffix, and report files are looked up by suffix as well, so the proxy may either strip the prefix (`proxy_pass http://backend/`) or keep it.
+- The token cookie is issued with `Path=/`, so it is sent for every proxied path.
+
+```nginx
+location /sbom/ {
+    proxy_pass http://127.0.0.1:8080/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
 ## Triggering a scan over REST
 
 The HTTP service also exposes a small REST API to start a scan on demand:
