@@ -13,10 +13,10 @@ services:
       # Keep the trailing slash: the gateway redirects the bare path with 301 and
       # the request is replayed as GET, which the OSV API rejects with 405.
       OSV_API_URL: ${OSV_API_URL:-https://abc.feg.com.tw/v1/querybatch/}
-      OSV_BATCH_SIZE: "100"
+      OSV_BATCH_SIZE: "1000"
       OSV_TIMEOUT_SECONDS: "15"
       OSV_RETRIES: "1"
-      OSV_TIME_BUDGET_SECONDS: "900"
+      OSV_TIME_BUDGET_SECONDS: "3600"
       MAX_TARBALL_MB: "2048"
       REPORT_HTTP_BIND: "0.0.0.0"
       REPORT_HTTP_PORT: "8080"
@@ -31,6 +31,9 @@ services:
       NTFY_MAX_MESSAGE_BYTES: "3500"
       NTFY_MAX_ITEMS: "20"
       REPORT_PUBLIC_URL: ${REPORT_PUBLIC_URL:-}
+      REPORT_PAGE_SIZE: "100"
+      REPORT_STATIC_HTML_MAX: "50000"
+      REPORT_ARCHIVE_KEEP: "2"
       LOG_LEVEL: INFO
       TZ: Asia/Taipei
     ports:
@@ -44,5 +47,5 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    mem_limit: ${SCAN_MEM_LIMIT:-2g}
+    mem_limit: ${SCAN_MEM_LIMIT:-4g}
     cpus: 2.0

@@ -119,6 +119,27 @@ Only one scan may run at a time. While a scan is in progress further triggers ar
 
 `phase` moves through `idle` → `requested` → `running` → `idle`. A triggered scan does not postpone the scheduled one: the daily deadline stays anchored to the last scheduled run.
 
+## Large registries
+
+A registry with hundreds of thousands of package versions needs a different setup than a small one:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `REPORT_PAGE_SIZE` | `100` | Rows per page in the report portal |
+| `REPORT_STATIC_HTML_MAX` | `50000` | Above this many package versions the static HTML snapshot is skipped and the portal serves the report |
+| `REPORT_ARCHIVE_KEEP` | `2` | Number of archived reports kept on disk |
+| `SCAN_MEM_LIMIT` | `4g` | Container memory limit |
+| `OSV_BATCH_SIZE` | `1000` | Packages per OSV request |
+| `OSV_TIME_BUDGET_SECONDS` | `3600` | Upper bound for the whole vulnerability lookup |
+
+How the portal stays usable with a huge report:
+
+- the report is kept in memory and **paginated on the server**, so a browser receives one page (about 20 KB) instead of a multi hundred megabyte HTML file,
+- search and severity filtering run on the server (`/?q=lodash&risk=CRITICAL&page=3`),
+- `latest.json` is a hard link to the newest archive, so the full report is stored once instead of twice,
+- the JSON report is written incrementally, the HTML rows are streamed and dependencies are kept compact in memory,
+- the peak RSS of every scan is logged (`peak_rss=…MB`).
+
 ## Risk alerts & scan status (ntfy)
 
 Every finished scan publishes **one** notification to an ntfy server (no login, topic-only):

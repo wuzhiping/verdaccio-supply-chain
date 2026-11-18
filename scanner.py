@@ -7,7 +7,7 @@ from collections import Counter
 
 import report_server
 import notifier
-from scan_control import CONTROL, LOCK
+from scan_control import CONTROL, LOCK, REPORTS
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
@@ -20,6 +20,8 @@ RETRIES = max(0, int(os.getenv("OSV_RETRIES", "2")))
 BUDGET = max(0, int(os.getenv("OSV_TIME_BUDGET_SECONDS", "900")))
 MAX_BYTES = max(1, int(os.getenv("MAX_TARBALL_MB", "2048"))) * 1024 * 1024
 PAGE_SIZE = max(20, int(os.getenv("REPORT_PAGE_SIZE", "100")))
+STATIC_HTML_MAX = max(0, int(os.getenv("REPORT_STATIC_HTML_MAX", "50000")))
+ARCHIVE_KEEP = max(0, int(os.getenv("REPORT_ARCHIVE_KEEP", "2")))
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(),
                     format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("supply-chain")
@@ -35,7 +37,23 @@ def license_text(v):
     return "UNKNOWN"
 
 def deps(v):
-    return {str(k): str(x) for k, x in v.items()} if isinstance(v, dict) else {}
+    """Store dependencies as a compact string, a dict costs ~1 KB per record."""
+    if not isinstance(v, dict): return ""
+    return ",".join(f"{str(k)}@{str(x)}" for k, x in v.items())
+
+def unpack_deps(value):
+    """Rebuild the dependency mapping for the report output."""
+    if isinstance(value, dict): return value
+    if not value: return {}
+    out = {}
+    for item in value.split(","):
+        if "@" in item:
+            name, _, ver = item.partition("@")
+            out[name] = ver
+    return out
+
+def dep_count(value):
+    return len(value.split(",")) if isinstance(value, str) and value else 0
 
 def read_json(p):
     try:
@@ -255,7 +273,7 @@ def summarize(report):
     for r in report["packages"]:
         names.add(r["name"])
         licenses[r.get("license", "UNKNOWN")] += 1
-        edges += sum(len(r.get(k, {})) for k in ("dependencies", "optionalDependencies", "peerDependencies"))
+        edges += sum(dep_count(r.get(k, "")) for k in ("dependencies", "optionalDependencies", "peerDependencies"))
         if r.get("vulnerabilities"): vulnerable += 1
         for v in r.get("vulnerabilities", []): sev[v.get("severity", "UNKNOWN")] += 1
     report["summary"].update({
@@ -301,18 +319,19 @@ def render_html(report, out):
       ("Vulnerability findings", "—" if pending else s["vulnerability_findings"]),
       ("Dependency edges", s["dependency_edges"])]
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k,v in cards)
-    rows = []
-    for r in report["packages"]:
-        vulns = r.get("vulnerabilities", [])
-        risk = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x:RANK.get(x,0), default="PENDING" if pending else "NONE")
-        vuln_html = "<br>".join(f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/"+v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})' for v in vulns) or ('<span class="pending">PENDING</span>' if pending else "—")
-        dep = ", ".join(f"{k}@{v}" for k,v in list(r.get("dependencies",{}).items())[:5])
-        rows.append("<tr>" + "".join([
-          f"<td>{esc(r['name'])}</td><td>{esc(r['version'])}</td>",
-          f'<td><span class="risk {risk.lower()}">{risk}</span></td>',
-          f"<td>{esc(r.get('license','UNKNOWN'))}</td><td>{esc(r.get('tarball_file','not found'))}</td>",
-          f"<td><code>{esc(r.get('sha256','not calculated'))}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
-        ]) + "</tr>")
+    def rows():
+        for r in report["packages"]:
+            vulns = r.get("vulnerabilities", [])
+            risk = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x:RANK.get(x,0), default="PENDING" if pending else "NONE")
+            vuln_html = "<br>".join(f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/"+v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})' for v in vulns) or ('<span class="pending">PENDING</span>' if pending else "—")
+            dep = ", ".join(r.get("dependencies", "").split(",")[:5]) if isinstance(r.get("dependencies"), str) else \
+                  ", ".join(f"{k}@{v}" for k,v in list(r.get("dependencies",{}).items())[:5])
+            yield "<tr>" + "".join([
+              f"<td>{esc(r['name'])}</td><td>{esc(r['version'])}</td>",
+              f'<td><span class="risk {risk.lower()}">{risk}</span></td>',
+              f"<td>{esc(r.get('license','UNKNOWN'))}</td><td>{esc(r.get('tarball_file','not found'))}</td>",
+              f"<td><code>{esc(r.get('sha256','not calculated'))}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
+            ]) + "</tr>"
     sev_html = "".join(f'<div class="card"><small>{k}</small><strong>{"—" if pending else s["severity"][k]}</strong></div>' for k in RANK)
     if pending:
         notice = '<p class="notice">Scan in progress &middot; vulnerability lookup is still pending &middot; this document contains the package inventory only</p>'
@@ -337,7 +356,7 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
 <section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>MEDIUM</option><option>LOW</option><option>NONE</option><option>PENDING</option></select><button id="prev" type="button">Prev</button><button id="next" type="button">Next</button><span id="pager" class="meta"></span></div>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>""")
-        for row in rows:
+        for row in rows():
             out.write(row)
         if not rows:
             out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
@@ -366,19 +385,72 @@ document.getElementById('next').addEventListener('click',function(){{page++;appl
 apply();
 </script></body></html>""")
 
+def json_ready(record):
+    """Rebuild the report schema for one package (dependencies back to objects)."""
+    out = dict(record)
+    for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+        if field in out: out[field] = unpack_deps(out[field])
+    return out
+
+def write_json(report, path):
+    """Stream the JSON report so a huge report never becomes one giant string."""
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write("{\n")
+        for key in ("schema", "generated_at", "scan_mode", "scan_root", "scan_state"):
+            if key in report:
+                fh.write(f"  {json.dumps(key)}: {json.dumps(report[key], ensure_ascii=False)},\n")
+        summary = json.dumps(report["summary"], ensure_ascii=False, indent=2)
+        fh.write(f'  "summary": {summary},\n')
+        fh.write(f'  "osv": {json.dumps(report["osv"], ensure_ascii=False)},\n')
+        fh.write('  "packages": [\n')
+        packages = report["packages"]
+        for i, rec in enumerate(packages):
+            fh.write("    " + json.dumps(json_ready(rec), ensure_ascii=False))
+            fh.write(",\n" if i < len(packages) - 1 else "\n")
+        fh.write("  ]\n}\n")
+
+def prune_archives():
+    files = sorted(OUT.glob("report-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[ARCHIVE_KEEP:]:
+        try:
+            old.unlink()
+            html = old.with_suffix(".html")
+            if html.exists(): html.unlink()
+        except OSError:
+            pass
+
 def write_report(report):
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     jp, hp = OUT/f"report-{stamp}.json", OUT/f"report-{stamp}.html"
-    with jp.open("w", encoding="utf-8") as fh:
-        json.dump(report, fh, ensure_ascii=False, indent=2)
-    with hp.open("w", encoding="utf-8") as fh:
-        render_html(report, fh)
+    write_json(report, jp)
+    count = len(report["packages"])
+    if STATIC_HTML_MAX and count > STATIC_HTML_MAX:
+        log.info("Static HTML skipped for %s package versions (limit %s), use the report portal",
+                 count, STATIC_HTML_MAX)
+    else:
+        with hp.open("w", encoding="utf-8") as fh:
+            render_html(report, fh)
+    # latest.json as a hard link, no second copy of a possibly huge file
     for src, dst in ((jp, OUT/"latest.json"), (hp, OUT/"index.html")):
-        tmp = dst.with_suffix(dst.suffix+".tmp")
-        shutil.copyfile(src, tmp)
+        if not src.exists(): continue
+        tmp = dst.with_name(dst.name + ".tmp")
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        try:
+            os.link(src, tmp)
+        except OSError:
+            shutil.copyfile(src, tmp)
+        try:
+            dst.unlink()
+        except OSError:
+            pass
         tmp.replace(dst)
-    log.info("Reports written: %s (%s) ; %s (%s)", hp, human_size(hp.stat().st_size), jp, human_size(jp.stat().st_size))
+    prune_archives()
+    log.info("Reports written: %s (%s) ; %s (%s)", hp.name, human_size(hp.stat().st_size) if hp.exists() else "-",
+             jp.name, human_size(jp.stat().st_size))
 
 def run():
     if LOCK.held_by_other() and LOCK.owner_alive():
@@ -409,6 +481,7 @@ def run():
         summarize(r)
         r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
         progress("reporting", 1, 1, "writing report")
+        REPORTS.set(r)
         write_report(r)
         s = r["summary"]
         log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s peak_rss=%sMB",

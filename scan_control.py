@@ -158,6 +158,23 @@ class ScanControl:
             }
 
 
+class ReportStore:
+    """Keep the latest report in memory so the portal can page through it."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.report = None
+
+    def set(self, report):
+        with self._lock:
+            self.report = report
+
+    def get(self):
+        with self._lock:
+            return self.report
+
+
+REPORTS = ReportStore()
 CONTROL = ScanControl()
 LOCK = ScanLock(os.getenv("REPORT_DIR", "/reports") + "/.scan.lock",
                 os.getenv("SCAN_LOCK_STALE_SECONDS", "180"))
