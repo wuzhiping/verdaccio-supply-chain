@@ -99,7 +99,7 @@ curl -s http://<host>:8080/api/scan | python3 -m json.tool
 
 Phases are `discovering` (package metadata) → `hashing` (tarball identity) → `reporting` (inventory written) → `osv` (vulnerability lookup) → `reporting` (final report) → `notifying` → `completed`. The same progress is written to the log every 5% as `Scan progress: hashing 150/300 (50.0%) …`.
 
-The inventory report is written **before** the vulnerability lookup starts, so the portal always shows the package inventory even when the OSV phase is slow or fails. The vulnerability lookup is bounded by `OSV_TIME_BUDGET_SECONDS` (900s by default); when the budget is exhausted the remaining packages are marked as not queried and the report is flagged as incomplete.
+The inventory report is written **before** the vulnerability lookup starts, so the portal always shows the package inventory even when the OSV phase is slow or fails. While the lookup is pending the report is marked `scan_state: pending`: the vulnerability cards and the risk column show `—` / `PENDING` and a banner explains that the document contains the inventory only — pending data is never presented as "no vulnerabilities". The vulnerability lookup is bounded by `OSV_TIME_BUDGET_SECONDS` (900s by default); when the budget is exhausted the remaining packages are marked as not queried and the report is flagged as incomplete.
 
 ### OSV endpoint cost
 

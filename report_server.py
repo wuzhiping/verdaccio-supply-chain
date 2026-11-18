@@ -34,12 +34,13 @@ button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff
 button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
 </style></head><body><header><h1>Scan progress</h1><p id="state">loading…</p></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
-<table><tr><th>Phase</th><td id="phase">-</td></tr>
+<table><tr><th>Current scan</th><td id="cur">-</td></tr>
+<tr><th>Phase</th><td id="phase">-</td></tr>
 <tr><th>Progress</th><td id="pct">-</td></tr>
 <tr><th>Processed</th><td id="count" class="mono">-</td></tr>
 <tr><th>Detail</th><td id="msg">-</td></tr>
 <tr><th>Elapsed</th><td id="elapsed">-</td></tr>
-<tr><th>Last scan</th><td id="last">-</td></tr>
+<tr><th>Previous scan</th><td id="last">-</td></tr>
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
 <p><a id="report" href="/">Open latest report</a></p></section></main>
@@ -67,6 +68,7 @@ async function poll(){
   const s=d.last_summary;
   $('last').textContent=s?('packages '+s.unique_packages+' · versions '+s.package_versions+
     ' · findings '+s.vulnerability_findings+' · '+(s.duration_seconds||0)+'s'):'—';
+  $('cur').textContent=d.running?('running · '+(p.phase||'-')+' '+(p.percent===null||p.percent===undefined?'':p.percent+'%')):'idle';
  }catch(e){$('state').textContent='error: '+e}
 }
 $('go').addEventListener('click',async()=>{

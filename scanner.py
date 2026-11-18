@@ -263,7 +263,7 @@ def build_report(records, tarballs, skipped):
     items = sorted(records.values(), key=lambda x: (x["name"].lower(), x["version"]))
     report = {
         "schema": "verdaccio-supply-chain-report/v1", "generated_at": now(),
-        "scan_mode": "full", "scan_root": str(ROOT),
+        "scan_mode": "full", "scan_root": str(ROOT), "scan_state": "complete",
         "summary": {"unique_packages": 0, "package_versions": len(items),
           "tarballs_scanned": tarballs, "tarballs_skipped_oversize": skipped,
           "versions_with_vulnerabilities": 0, "vulnerability_findings": 0,
@@ -289,15 +289,18 @@ def esc(x):
 def render_html(report, out):
     """Write the HTML report incrementally, the report can be very large."""
     s = report["summary"]
+    pending = report.get("scan_state") == "pending"
     cards = [("Unique packages", s["unique_packages"]), ("Package versions", s["package_versions"]),
-      ("Tarballs hashed", s["tarballs_scanned"]), ("Vulnerable versions", s["versions_with_vulnerabilities"]),
-      ("Vulnerability findings", s["vulnerability_findings"]), ("Dependency edges", s["dependency_edges"])]
-    card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{v}</strong></div>' for k,v in cards)
+      ("Tarballs hashed", s["tarballs_scanned"]),
+      ("Vulnerable versions", "—" if pending else s["versions_with_vulnerabilities"]),
+      ("Vulnerability findings", "—" if pending else s["vulnerability_findings"]),
+      ("Dependency edges", s["dependency_edges"])]
+    card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k,v in cards)
     rows = []
     for r in report["packages"]:
         vulns = r.get("vulnerabilities", [])
-        risk = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x:RANK.get(x,0), default="NONE")
-        vuln_html = "<br>".join(f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/"+v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})' for v in vulns) or "—"
+        risk = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x:RANK.get(x,0), default="PENDING" if pending else "NONE")
+        vuln_html = "<br>".join(f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/"+v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})' for v in vulns) or ('<span class="pending">PENDING</span>' if pending else "—")
         dep = ", ".join(f"{k}@{v}" for k,v in list(r.get("dependencies",{}).items())[:10])
         rows.append("<tr>" + "".join([
           f"<td>{esc(r['name'])}</td><td>{esc(r['version'])}</td>",
@@ -305,8 +308,13 @@ def render_html(report, out):
           f"<td>{esc(r.get('license','UNKNOWN'))}</td><td>{esc(r.get('tarball_file','not found'))}</td>",
           f"<td><code>{esc(r.get('sha256','not calculated'))}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
         ]) + "</tr>")
-    sev_html = "".join(f'<div class="card"><small>{k}</small><strong>{s["severity"][k]}</strong></div>' for k in RANK)
-    notice = f'<p class="notice">OSV query warning: {esc(report["osv"]["error"])}</p>' if report["osv"].get("error") else ""
+    sev_html = "".join(f'<div class="card"><small>{k}</small><strong>{"—" if pending else s["severity"][k]}</strong></div>' for k in RANK)
+    if pending:
+        notice = '<p class="notice">Scan in progress &middot; vulnerability lookup is still pending &middot; this document contains the package inventory only</p>'
+    elif report["osv"].get("error"):
+        notice = f'<p class="notice">OSV query warning: {esc(report["osv"]["error"])}</p>'
+    else:
+        notice = ""
     if True:
         out.write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verdaccio Supply Chain Security</title><style>
@@ -319,6 +327,7 @@ main{{max-width:1450px;margin:22px auto;padding:0 18px}}.cards{{display:grid;gri
 code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}}
 .critical,.high{{background:#ffe3e3;color:#a51d2d}}.medium{{background:#fff0d4;color:#8a5700}}.low{{background:#e3f4e8;color:#176b37}}
 .notice{{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}}.meta{{color:#68758b;font-size:12px;margin-top:12px}}
+.pending{{color:#8a5700;font-size:11px;font-weight:bold}}
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
 <section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>NONE</option></select></div>
@@ -358,6 +367,7 @@ def run():
         progress("scanning", 0, 0, "scanning storage")
         records, tarballs, skipped = discover()
         r = build_report(records, tarballs, skipped)
+        r["scan_state"] = "pending"
         r["osv"]["error"] = "vulnerability lookup pending"
         r["summary"]["vulnerability_scan_incomplete"] = True
         r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
@@ -366,6 +376,7 @@ def run():
         log.info("Inventory report written, %s package versions, peak_rss=%sMB", len(records), peak_memory_mb())
         progress("osv", 0, len(records), "vulnerability lookup")
         vuln_total, osv_error = scan_vulnerabilities(records)
+        r["scan_state"] = "complete"
         r["osv"]["error"] = osv_error
         r["summary"]["vulnerability_findings"] = vuln_total
         r["summary"]["vulnerability_scan_incomplete"] = bool(osv_error)
