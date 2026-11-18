@@ -244,7 +244,7 @@ def render_portal(rows, summary, query, state=None):
              ("Dependency edges", summary.get("dependency_edges", 0))]
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
-                    for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING"))
+                    for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING", "UNKNOWN"))
 
     def link(target):
         return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"page={target}"])
