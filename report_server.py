@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only HTTP publisher for the generated reports; Python standard library only."""
-import os, hmac, json, logging, threading
+import os, re, hmac, json, logging, threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, quote, unquote
@@ -294,11 +294,14 @@ def render_portal(rows, summary, query, state=None):
                 f'OSV {"enabled" if summary.get("osv_enabled", True) else "disabled"}')
     page = PORTAL_HEAD
     for key, value in {
-            "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks,
+            "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks, "scopes": scopes,
             "count": count_text,
             "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
+    missing = sorted(set(re.findall(r"\{\{(\w+)\}\}", page)))
+    if missing:
+        log.error("Unreplaced placeholder in the report portal: %s", missing)
     return page
 
 
