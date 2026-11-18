@@ -530,13 +530,13 @@ def run():
         log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s peak_rss=%sMB",
                  s["unique_packages"], s["package_versions"], s["tarballs_scanned"],
                  s["vulnerability_findings"], peak_memory_mb())
-        r["packages"] = []
-        records.clear()
         try:
             progress("notifying", 1, 1, "publishing notifications")
             notifier.notify(r)
         except Exception:
             log.exception("Risk notification failed")
+        r["packages"] = []
+        records.clear()
         CONTROL.end(summary=s, generated_at=r["generated_at"])
     except Exception as e:
         CONTROL.end(error=str(e))

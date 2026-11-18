@@ -187,6 +187,22 @@ def notify(report):
         return False
     findings = collect(report)
     unknown = unresolved(report)
+    severity = (report.get("summary") or {}).get("severity") or {}
+    counted = (severity.get("CRITICAL", 0), severity.get("HIGH", 0))
+    if findings and (counted[0] or counted[1]) and not counted[0] and not counted[1]:
+        log.error("Summary reports no critical/high findings but %s advisories were collected, "
+                  "the notification is based on the collected advisories", len(findings))
+    if (severity.get("CRITICAL", 0) or severity.get("HIGH", 0)) and not findings:
+        log.error("Summary reports CRITICAL=%s HIGH=%s but no advisory was collected, "
+                  "not claiming an all clear", severity.get("CRITICAL"), severity.get("HIGH"))
+        title = "SBOM risk alert (advisory details unavailable)"
+        message = truncate("Verdaccio SBOM scan finished.\n"
+                           f"Scan time: {report.get('generated_at', 'unknown')}\n"
+                           f"Findings: CRITICAL={severity.get('CRITICAL', 0)} HIGH={severity.get('HIGH', 0)} "
+                           f"MEDIUM={severity.get('MEDIUM', 0)} LOW={severity.get('LOW', 0)}\n"
+                           "The affected package versions could not be listed, see the report for details.",
+                           MAX_BYTES)
+        return send(title, message, 5, ["rotating_light"])
     if findings:
         sig = signature(findings)
         if MODE == "changed" and read_state().get("signature") == sig:
