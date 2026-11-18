@@ -5,6 +5,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from collections import Counter
 
+import report_server
+import notifier
+from scan_control import CONTROL
+
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
 INTERVAL = max(1, int(os.getenv("SCAN_INTERVAL_HOURS", "24")))
@@ -242,18 +246,44 @@ def write_report(report):
     log.info("Reports written: %s ; %s", hp, jp)
 
 def run():
-    r = build_report()
-    write_report(r)
-    s = r["summary"]
-    log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s",
-             s["unique_packages"], s["package_versions"], s["tarballs_scanned"], s["vulnerability_findings"])
+    CONTROL.begin()
+    try:
+        r = build_report()
+        write_report(r)
+        s = r["summary"]
+        log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s",
+                 s["unique_packages"], s["package_versions"], s["tarballs_scanned"], s["vulnerability_findings"])
+        try:
+            notifier.notify(r)
+        except Exception:
+            log.exception("Risk notification failed")
+        CONTROL.end(summary=s, generated_at=r["generated_at"])
+    except Exception as e:
+        CONTROL.end(error=str(e))
+        raise
 
-if __name__ == "__main__":
+def main():
     log.info("Scanner online: root=%s interval=%sh", ROOT, INTERVAL)
+    try:
+        report_server.start_server()
+    except Exception:
+        log.exception("Report HTTP server failed to start")
     if os.getenv("SCAN_ON_START", "true").lower() not in ("0", "false", "no"):
         try: run()
         except Exception: log.exception("Initial scan failed")
+    deadline = time.monotonic() + INTERVAL * 3600
     while True:
-        time.sleep(INTERVAL * 3600)
+        triggered = CONTROL.trigger.wait(max(1.0, deadline - time.monotonic()))
+        if triggered:
+            CONTROL.trigger.clear()
         try: run()
-        except Exception: log.exception("Scheduled scan failed; retrying next interval")
+        except Exception: log.exception("Scan failed; next attempt on schedule")
+        if triggered:
+            deadline += INTERVAL * 3600
+            if deadline <= time.monotonic():
+                deadline = time.monotonic() + INTERVAL * 3600
+        else:
+            deadline = time.monotonic() + INTERVAL * 3600
+
+if __name__ == "__main__":
+    main()

@@ -15,7 +15,97 @@ docker compose -f compose.yml up -d --build
 docker compose -f compose.yml logs -f
 ```
 
-The scanner runs a full scan on startup, then every 24 hours. Open `reports/index.html` on the host. The service intentionally exposes no HTTP port; serve the reports directory through an existing authenticated Nginx if remote access is needed.
+The scanner runs a full scan on startup, then every 24 hours. Reports are published over HTTP on port `8080` inside the container and mapped to the host by `compose.yml`, so the latest report is at `http://<host>:8080/` (`reports/index.html`).
+
+## Sharing the reports over HTTP
+
+The container serves the report directory with a read-only static server (Python standard library only, no extra dependencies):
+
+| Path | Content |
+|------|---------|
+| `/` | Latest report (`index.html`) |
+| `/latest.json` | Latest report as JSON |
+| `/report-<timestamp>.html` / `.json` | Archived reports |
+| `/healthz` | JSON health probe (`{"status":"ok",...}`) |
+| `/api/scan` | Trigger a scan (`POST`) / read scan state (`GET`) |
+
+Access control is optional but recommended, since package inventories and vulnerability findings are sensitive:
+
+```bash
+# .env
+REPORT_TOKEN=$(openssl rand -hex 16)
+```
+
+With a token set, every request needs it:
+
+```bash
+curl -H "Authorization: Bearer $REPORT_TOKEN" http://<host>:8080/
+curl "http://<host>:8080/latest.json?token=$REPORT_TOKEN"
+```
+
+Opening `http://<host>:8080/?token=<token>` in a browser stores the token in an `HttpOnly` cookie and redirects to the clean URL, so the pages can be browsed normally. Without `REPORT_TOKEN` the portal is open to anyone who can reach the port.
+
+For public exposure, keep the token and terminate TLS in front of the port (the built-in server speaks plain HTTP only):
+
+```bash
+docker compose -f compose.yml up -d --build
+docker compose -f compose.yml logs -f
+```
+
+## Triggering a scan over REST
+
+The HTTP service also exposes a small REST API to start a scan on demand:
+
+| Method & Path | Response | Meaning |
+|---------------|----------|---------|
+| `POST /api/scan` | `202 Accepted` | Scan triggered, running in the background |
+| `POST /api/scan` | `429 Too Many Requests` | A scan is already running (`Retry-After` header included) |
+| `GET /api/scan` | `200 OK` | Current state (`phase`, `running`, timings, last summary) |
+| `GET /api/scan/status` | `200 OK` | Alias of `GET /api/scan` |
+| `GET /healthz` | `200 OK` | Health probe |
+
+```bash
+# trigger a scan now
+curl -X POST http://<host>:8080/api/scan
+
+# poll the state
+curl -s http://<host>:8080/api/scan | python3 -m json.tool
+```
+
+Only one scan may run at a time. While a scan is in progress further triggers are rejected with `429` and the body `{"error": "scan_in_progress", ...}`; the rejected requests are counted in `requests_rejected`. The API uses the same `REPORT_TOKEN` as the report portal (send `Authorization: Bearer <token>` or `?token=<token>`), so trigger it with the same credential used to read the reports.
+
+`phase` moves through `idle` → `requested` → `running` → `idle`. A triggered scan does not postpone the scheduled one: the daily deadline stays anchored to the last scheduled run.
+
+## Risk alerts & scan status (ntfy)
+
+Every finished scan publishes **one** notification to an ntfy server (no login, topic-only):
+
+- **CRITICAL / HIGH findings** → risk alert, priority `5` (CRITICAL present) or `4`, tags `rotating_light` / `warning`, body lists every affected `name@version` with its advisory ID
+- **No CRITICAL / HIGH findings** → all-clear report (平安), priority `2`, tag `white_check_mark`, body carries package/version counts, tarball hashes, dependency edges, severity totals and the report link
+- **OSV lookup failed** → the all-clear is downgraded to `SBOM scan INCOMPLETE (OSV error)`, priority `3`, with an explicit warning that an empty result is not evidence of zero vulnerabilities
+
+The target is configured entirely through environment variables:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `NTFY_ENABLED` | `true` | Master switch for push notifications |
+| `NTFY_URL` | `https://msn.feg.cn` | ntfy server base URL; may also contain the topic |
+| `NTFY_TOPIC` | `pub_abc` | Topic to publish to (appended to `NTFY_URL` unless the URL already ends with it) |
+| `NTFY_ALERT_MODE` | `always` | `always` pushes the risk alert on every scan with findings, `changed` only when the finding set differs from the last alert (the all-clear report is always sent) |
+| `NTFY_TIMEOUT_SECONDS` | `10` | Per-request timeout |
+| `NTFY_RETRIES` | `2` | Retries on transient failures |
+| `NTFY_MAX_MESSAGE_BYTES` | `3500` | Truncation limit for the message body |
+| `NTFY_MAX_ITEMS` | `20` | Max packages listed per severity level |
+| `REPORT_PUBLIC_URL` | empty | Public base URL of the report portal; used as the click-through link |
+
+```bash
+# .env
+NTFY_URL=https://msn.feg.cn
+NTFY_TOPIC=pub_abc
+REPORT_PUBLIC_URL=https://sbom.example.internal
+```
+
+Priority is `5` when a CRITICAL finding exists, `4` for HIGH-only alerts, `3` for an incomplete scan and `2` for the all-clear report. Push failures are logged and never abort the scan.
 
 ## What it does
 
@@ -28,7 +118,7 @@ The scanner runs a full scan on startup, then every 24 hours. Open `reports/inde
 
 ## Configuration
 
-`SCAN_INTERVAL_HOURS` (24), `SCAN_ON_START` (true), `OSV_ENABLED` (true), `OSV_BATCH_SIZE` (100), `OSV_TIMEOUT_SECONDS` (30), `OSV_RETRIES` (2), `MAX_TARBALL_MB` (2048), `LOG_LEVEL` (INFO).
+`SCAN_INTERVAL_HOURS` (24), `SCAN_ON_START` (true), `OSV_ENABLED` (true), `OSV_BATCH_SIZE` (100), `OSV_TIMEOUT_SECONDS` (30), `OSV_RETRIES` (2), `MAX_TARBALL_MB` (2048), `REPORT_HTTP_BIND` (0.0.0.0), `REPORT_HTTP_PORT` (8080), `REPORT_TOKEN` (empty = open access), `LOG_LEVEL` (INFO).
 
 ## Important
 
@@ -46,6 +136,9 @@ The scanner runs a full scan on startup, then every 24 hours. Open `reports/inde
 docker compose -f compose.yml ps
 docker compose -f compose.yml logs --tail=200
 ls -lh reports/
+curl -s http://127.0.0.1:8080/healthz
+curl -s http://127.0.0.1:8080/api/scan
+curl -X POST http://127.0.0.1:8080/api/scan
 ```
 
 Restart to trigger an immediate scan (startup scan is enabled):

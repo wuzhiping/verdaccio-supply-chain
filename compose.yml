@@ -15,8 +15,23 @@ services:
       OSV_TIMEOUT_SECONDS: "30"
       OSV_RETRIES: "2"
       MAX_TARBALL_MB: "2048"
+      REPORT_HTTP_BIND: "0.0.0.0"
+      REPORT_HTTP_PORT: "8080"
+      REPORT_TOKEN: ${REPORT_TOKEN:-}
+      SCAN_RETRY_AFTER_SECONDS: "10"
+      NTFY_ENABLED: "true"
+      NTFY_URL: ${NTFY_URL:-https://msn.feg.cn}
+      NTFY_TOPIC: ${NTFY_TOPIC:-pub_abc}
+      NTFY_ALERT_MODE: ${NTFY_ALERT_MODE:-always}
+      NTFY_TIMEOUT_SECONDS: "10"
+      NTFY_RETRIES: "2"
+      NTFY_MAX_MESSAGE_BYTES: "3500"
+      NTFY_MAX_ITEMS: "20"
+      REPORT_PUBLIC_URL: ${REPORT_PUBLIC_URL:-}
       LOG_LEVEL: INFO
       TZ: Asia/Taipei
+    ports:
+      - "${REPORT_HTTP_PORT:-8080}:8080"
     volumes:
       - ${VERDACCIO_DATA:-./verdaccio-data}:/verdaccio-data:ro
       - ./reports:/reports
