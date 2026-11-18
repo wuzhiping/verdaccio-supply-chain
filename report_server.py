@@ -111,7 +111,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
-<section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="/">
+<section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="">
 <input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="risk">{{risks}}</select>
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
@@ -247,7 +247,7 @@ def render_portal(rows, summary, query, state=None):
                     for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING"))
 
     def link(target):
-        return "/?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"page={target}"])
+        return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"page={target}"])
 
     pager = ""
     if pages > 1:
