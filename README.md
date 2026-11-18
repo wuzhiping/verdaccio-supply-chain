@@ -143,6 +143,24 @@ How the portal stays usable with a huge report:
 - the JSON report is written incrementally, the HTML rows are streamed and dependencies are kept compact in memory,
 - the peak RSS of every scan is logged (`peak_rss=…MB`).
 
+## Vulnerability severity
+
+A gateway that only returns advisory IDs (no severity) makes every finding look harmless. The scanner therefore resolves the severity of every advisory that arrives without it:
+
+1. the numeric CVSS score if the API returned one,
+2. the CVSS v3 vector, parsed locally into a base score (`AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` → 9.8),
+3. the advisory label from `database_specific.severity` (`MODERATE` is mapped to `MEDIUM`),
+4. otherwise the advisory is fetched from the OSV detail endpoint — `OSV_API_URL` without its last segment plus `/vulns/<id>`, which is the same layout as the official OSV API.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OSV_ENRICH` | `true` | Resolve missing severities |
+| `OSV_ENRICH_MAX` | `5000` | Maximum advisories resolved per scan |
+| `OSV_ENRICH_WORKERS` | `8` | Parallel detail requests |
+| `OSV_DETAIL_TIMEOUT_SECONDS` | `15` | Timeout for a detail request |
+
+If some advisories still have no severity, the report counts them as `severity_unresolved` and the notification says so instead of claiming that everything is fine.
+
 ## Risk alerts & scan status (ntfy)
 
 Every finished scan publishes **one** notification to an ntfy server (no login, topic-only):

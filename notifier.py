@@ -66,6 +66,12 @@ def write_state(sig):
         log.debug("Cannot persist ntfy state: %s", e)
 
 
+def unresolved(report):
+    """Advisories whose severity could not be determined."""
+    return [v for pkg in report.get("packages", []) for v in pkg.get("vulnerabilities", [])
+            if (v.get("severity") or "UNKNOWN") == "UNKNOWN"]
+
+
 def build(report, findings):
     summary = report.get("summary", {})
     severity = summary.get("severity", {})
@@ -180,6 +186,7 @@ def notify(report):
         log.debug("ntfy disabled")
         return False
     findings = collect(report)
+    unknown = unresolved(report)
     if findings:
         sig = signature(findings)
         if MODE == "changed" and read_state().get("signature") == sig:
@@ -191,6 +198,16 @@ def notify(report):
             write_state(sig)
         return ok
     osv_error = (report.get("osv") or {}).get("error")
+    if unknown:
+        ids = ", ".join(sorted({str(v.get("id", "UNKNOWN")) for v in unknown})[:20])
+        title = f"SBOM scan found {len(unknown)} advisories with unresolved severity"
+        message = truncate("Verdaccio SBOM scan finished.\n"
+                           f"Scan time: {report.get('generated_at', 'unknown')}\n"
+                           f"Advisories: {len(unknown)} with unknown severity, no CRITICAL/HIGH classified\n"
+                           f"IDs: {ids}\n"
+                           "The severity of these advisories could not be resolved, so this run does "
+                           "NOT confirm that there are no critical vulnerabilities.", MAX_BYTES)
+        return send(title, message, 3, ["rotating_light", "question"])
     title, message, priority, tags = build_clear(report, osv_error)
     return send(title, message, priority, tags)
 

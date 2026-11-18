@@ -7,6 +7,7 @@ from collections import Counter
 
 import report_server
 import notifier
+import osv_severity
 from scan_control import CONTROL, LOCK
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
@@ -264,7 +265,14 @@ def scan_vulnerabilities(records):
             log.exception("OSV batch failed")
         progress("osv", i + len(group), len(items),
                  f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
-    return total, "; ".join(errors) if errors else None
+    unresolved = [v for rec in items for v in rec.get("vulnerabilities", []) if v.get("severity") == "UNKNOWN"]
+    if unresolved:
+        log.info("Resolving severity for %s advisories without severity data", len(unresolved))
+        osv_severity.enrich(unresolved)
+    message = "; ".join(dict.fromkeys(errors))[:1500] if errors else None
+    if unresolved and all(v.get("severity") == "UNKNOWN" for v in unresolved):
+        message = ((message + "; ") if message else "") + f"severity unresolved for {len(unresolved)} advisories"
+    return total, message
 
 def summarize(report):
     """Recompute the summary counters from the package list."""
@@ -279,6 +287,7 @@ def summarize(report):
     report["summary"].update({
         "unique_packages": len(names), "package_versions": len(report["packages"]),
         "versions_with_vulnerabilities": vulnerable, "vulnerability_findings": sum(sev.values()),
+        "severity_unresolved": sev["UNKNOWN"],
         "dependency_edges": edges, "severity": {k: sev[k] for k in RANK},
         "licenses": dict(licenses.most_common())})
 
