@@ -101,6 +101,10 @@ Phases are `discovering` (package metadata) → `hashing` (tarball identity) →
 
 The inventory report is written **before** the vulnerability lookup starts, so the portal always shows the package inventory even when the OSV phase is slow or fails. The vulnerability lookup is bounded by `OSV_TIME_BUDGET_SECONDS` (900s by default); when the budget is exhausted the remaining packages are marked as not queried and the report is flagged as incomplete.
 
+### OSV endpoint cost
+
+A failing OSV endpoint is the usual reason for a scan that never finishes: each batch of 100 packages is retried `OSV_RETRIES` times with `OSV_TIMEOUT_SECONDS` per attempt, so an unreachable endpoint costs `retries+1 × timeout` per batch (93s with the defaults) and a large registry takes hours. Keep `OSV_API_URL` pointing at a reachable endpoint (the bundled default is the local mirror, ~0.5s per batch) and lower `OSV_TIMEOUT_SECONDS` / `OSV_RETRIES` so a broken endpoint is detected quickly.
+
 ### Two scanners on the same storage
 
 A second scanner working on the same report directory is detected through a lock file (`REPORT_DIR/.scan.lock`):
