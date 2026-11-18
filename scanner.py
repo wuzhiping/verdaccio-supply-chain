@@ -62,9 +62,22 @@ def read_json(p):
     except Exception:
         return None
 
+def version_key(v):
+    """Rough semver ordering, used to find the newest version of a package."""
+    core, _, pre = str(v).partition("-")
+    nums = []
+    for part in core.split("."):
+        try:
+            nums.append((0, int(part)))
+        except ValueError:
+            nums.append((1, part))
+    return (nums, 0 if not pre else 1, pre)
+
 def add_packument(records, obj):
     if not isinstance(obj, dict) or not isinstance(obj.get("versions"), dict):
         return
+    tags = obj.get("dist-tags") if isinstance(obj.get("dist-tags"), dict) else {}
+    latest = tags.get("latest")
     for ver, meta in obj["versions"].items():
         if not isinstance(meta, dict): continue
         name, version = meta.get("name") or obj.get("name"), meta.get("version") or ver
@@ -81,6 +94,8 @@ def add_packument(records, obj):
             "dist": meta.get("dist") if isinstance(meta.get("dist"), dict) else rec.get("dist", {}),
             "source": "metadata"
         })
+        if latest and ver == latest:
+            records[name + "@" + ver]["is_latest"] = True
 
 def read_manifest(tf):
     members = [m for m in tf.getmembers()
@@ -293,6 +308,15 @@ def summarize(report):
 
 def build_report(records, tarballs, skipped):
     items = sorted(records.values(), key=lambda x: (x["name"].lower(), x["version"]))
+    newest = {}
+    for r in items:
+        name = r.get("name", "")
+        key = version_key(r.get("version", ""))
+        if name not in newest or key > newest[name][0]:
+            newest[name] = (key, r.get("version"))
+    for r in items:
+        if newest.get(r.get("name", ""), (None, None))[1] == r.get("version"):
+            r["is_latest"] = True
     report = {
         "schema": "verdaccio-supply-chain-report/v1", "generated_at": now(),
         "scan_mode": "full", "scan_root": str(ROOT), "scan_state": "complete",
@@ -455,10 +479,13 @@ def write_index(report):
             links = [{"i": v.get("id", "UNKNOWN"), "s": v.get("severity", "UNKNOWN"),
                       "u": (v.get("references") or ["https://osv.dev/vulnerability/" + v.get("id", "")])[0]}
                      for v in vulns]
-            fh.write(json.dumps({"n": r.get("name", ""), "v": r.get("version", ""), "r": level,
+            name = r.get("name", "")
+            cached = bool(r.get("tarball_file"))
+            latest = bool(r.get("is_latest"))
+            fh.write(json.dumps({"n": name, "v": r.get("version", ""), "r": level,
                                  "l": r.get("license", "UNKNOWN"), "t": r.get("tarball_file", ""),
                                  "h": r.get("sha256", ""), "d": r.get("dependencies", ""),
-                                 "x": links}, ensure_ascii=False) + "\n")
+                                 "c": cached, "n2": latest, "x": links}, ensure_ascii=False) + "\n")
     tmp.replace(path)
     log.info("Index written: %s (%s)", path, human_size(path.stat().st_size))
 

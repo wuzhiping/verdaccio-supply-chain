@@ -30,6 +30,7 @@ services:
       NTFY_URL: ${NTFY_URL:-https://msn.feg.cn}
       NTFY_TOPIC: ${NTFY_TOPIC:-pub_abc}
       NTFY_ALERT_MODE: ${NTFY_ALERT_MODE:-always}
+      NTFY_SCOPE: ${NTFY_SCOPE:-relevant}
       NTFY_TIMEOUT_SECONDS: "10"
       NTFY_RETRIES: "2"
       NTFY_MAX_MESSAGE_BYTES: "3500"

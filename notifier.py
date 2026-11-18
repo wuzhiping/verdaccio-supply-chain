@@ -17,6 +17,7 @@ MAX_ITEMS = max(1, int(os.getenv("NTFY_MAX_ITEMS", "20")))
 PUBLIC_URL = os.getenv("REPORT_PUBLIC_URL", "").strip().rstrip("/")
 STATE_FILE = Path(os.getenv("REPORT_DIR", "/reports")) / ".ntfy-state.json"
 ALERT_LEVELS = ("CRITICAL", "HIGH")
+SCOPE = os.getenv("NTFY_SCOPE", "relevant").strip().lower()
 
 
 def endpoint():
@@ -27,14 +28,21 @@ def endpoint():
     return BASE_URL if last == TOPIC else f"{BASE_URL}/{quote(TOPIC, safe='')}"
 
 
-def collect(report):
+def relevant(pkg):
+    """A version that matters for this registry: cached locally or the newest one."""
+    return bool(pkg.get("tarball_file")) or bool(pkg.get("is_latest"))
+
+
+def collect(report, scoped=True):
+    """Collect the critical and high advisories, tagged with the registry relevance."""
     findings = []
     for pkg in report.get("packages", []):
+        is_relevant = relevant(pkg)
         for vuln in pkg.get("vulnerabilities", []):
             level = (vuln.get("severity") or "UNKNOWN").upper()
             if level in ALERT_LEVELS:
                 findings.append((level, str(pkg.get("name", "")), str(pkg.get("version", "")),
-                                 str(vuln.get("id", "UNKNOWN"))))
+                                 str(vuln.get("id", "UNKNOWN")), is_relevant))
     findings.sort(key=lambda f: (0 if f[0] == "CRITICAL" else 1, f[1].lower(), f[2], f[3]))
     return findings
 
@@ -47,7 +55,7 @@ def truncate(text, limit):
 
 
 def signature(findings):
-    joined = "\n".join(f"{s}:{n}@{v}:{i}" for s, n, v, i in findings)
+    joined = "\n".join(f"{f[0]}:{f[1]}@{f[2]}:{f[3]}" for f in findings)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
@@ -66,21 +74,27 @@ def write_state(sig):
         log.debug("Cannot persist ntfy state: %s", e)
 
 
-def unresolved(report):
+def unresolved(report, scoped=True):
     """Advisories whose severity could not be determined."""
-    return [v for pkg in report.get("packages", []) for v in pkg.get("vulnerabilities", [])
-            if (v.get("severity") or "UNKNOWN") == "UNKNOWN"]
+    out = []
+    for pkg in report.get("packages", []):
+        if scoped and not relevant(pkg):
+            continue
+        for v in pkg.get("vulnerabilities", []):
+            if (v.get("severity") or "UNKNOWN") == "UNKNOWN":
+                out.append(v)
+    return out
 
 
-def build(report, findings):
+def build(report, findings, hidden=0):
     summary = report.get("summary", {})
-    severity = summary.get("severity", {})
-    critical, high = severity.get("CRITICAL", 0), severity.get("HIGH", 0)
+    critical = sum(1 for f in findings if f[0] == "CRITICAL")
+    high = sum(1 for f in findings if f[0] == "HIGH")
     osv_error = (report.get("osv") or {}).get("error")
     lines = ["Verdaccio SBOM risk alert",
              f"Scan time: {report.get('generated_at', 'unknown')}",
-             f"Findings: CRITICAL={critical} HIGH={high} (total {summary.get('vulnerability_findings', 0)})",
-             f"Vulnerable versions: {summary.get('versions_with_vulnerabilities', 0)} / {summary.get('package_versions', 0)}"]
+             f"Findings in scope: CRITICAL={critical} HIGH={high} ({len(findings)} advisories)",
+             f"Vulnerable versions in scope: {len({(f[1], f[2]) for f in findings})}"]
     if osv_error:
         lines.append(f"WARNING: OSV query failed, results may be incomplete: {osv_error}")
     for level in ALERT_LEVELS:
@@ -89,10 +103,12 @@ def build(report, findings):
             continue
         lines.append("")
         lines.append(f"{level} ({len(rows)})")
-        for _, name, version, vid in rows[:MAX_ITEMS]:
+        for _, name, version, vid, _rel in rows[:MAX_ITEMS]:
             lines.append(f"- {name}@{version} {vid}")
         if len(rows) > MAX_ITEMS:
             lines.append(f"- ... {len(rows) - MAX_ITEMS} more")
+    if hidden:
+        lines.append(f"{hidden} further advisories exist in historical versions that are not installed from this registry.")
     if PUBLIC_URL:
         lines.append("")
         lines.append(f"Report: {PUBLIC_URL}/")
@@ -185,8 +201,11 @@ def notify(report):
     if not ENABLED:
         log.debug("ntfy disabled")
         return False
-    findings = collect(report)
-    unknown = unresolved(report)
+    scoped = SCOPE != "all"
+    everything = collect(report)
+    findings = [f for f in everything if f[4]] if scoped else everything
+    hidden = len(everything) - len(findings)
+    unknown = unresolved(report, scoped)
     severity = (report.get("summary") or {}).get("severity") or {}
     counted = (severity.get("CRITICAL", 0), severity.get("HIGH", 0))
     if findings and (counted[0] or counted[1]) and not counted[0] and not counted[1]:
@@ -208,7 +227,7 @@ def notify(report):
         if MODE == "changed" and read_state().get("signature") == sig:
             log.info("ntfy risk alert skipped: findings unchanged since last alert")
             return False
-        title, message, priority, tags = build(report, findings)
+        title, message, priority, tags = build(report, findings, hidden)
         ok = send(title, message, priority, tags)
         if ok:
             write_state(sig)
@@ -225,6 +244,9 @@ def notify(report):
                            "NOT confirm that there are no critical vulnerabilities.", MAX_BYTES)
         return send(title, message, 3, ["rotating_light", "question"])
     title, message, priority, tags = build_clear(report, osv_error)
+    if hidden:
+        message = truncate(message + f"\n{hidden} advisories exist in historical versions that are not "
+                            "installed from this registry and were not counted.", MAX_BYTES)
     return send(title, message, priority, tags)
 
 

@@ -161,6 +161,21 @@ A gateway that only returns advisory IDs (no severity) makes every finding look 
 
 If some advisories still have no severity, the report counts them as `severity_unresolved` and the notification says so instead of claiming that everything is fine. The notification cross checks the collected advisories against the summary counters: if the summary reports critical or high findings that could not be listed, it sends a risk alert instead of an all clear message.
 
+## What is relevant to this registry
+
+A packument lists every version that was ever published, so a raw report is dominated by ancient versions nobody installs. The scanner marks every package version with two flags:
+
+- `is_latest` — the newest version of the package (`dist-tags.latest`, or the highest version if the packument has no dist tags),
+- a cached tarball — the version was actually downloaded through this registry.
+
+The report portal defaults to **Registry relevant** (cached or latest), with `All versions`, `Cached tarballs only` and `Latest version only` available in the same dropdown:
+
+```
+/?q=lodash&risk=HIGH&scope=relevant&page=2
+```
+
+The ntfy alert uses the same scope (`NTFY_SCOPE`, `relevant` by default, `all` to disable the filter): only critical and high advisories of relevant versions are listed, and the number of advisories that only exist in historical versions is reported as a single line.
+
 ## Risk alerts & scan status (ntfy)
 
 Every finished scan publishes **one** notification to an ntfy server (no login, topic-only):

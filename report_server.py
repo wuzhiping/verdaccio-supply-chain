@@ -112,7 +112,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="">
-<input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="risk">{{risks}}</select>
+<input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="scope">{{scopes}}</select><select name="risk">{{risks}}</select>
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
@@ -142,6 +142,7 @@ class IndexStore:
         self._mtime = None
 
     def rows(self):
+        global scoped
         try:
             mtime = self.path.stat().st_mtime
         except OSError:
@@ -152,6 +153,7 @@ class IndexStore:
             if self._mtime == mtime:
                 return self._rows
         rows = []
+        scoped = False
         try:
             with self.path.open("r", encoding="utf-8") as fh:
                 for line in fh:
@@ -165,17 +167,21 @@ class IndexStore:
                     deps = str(d.get("d", "")); links = d.get("x") or []
                     ids = " ".join(str(x.get("i", "")) for x in links)
                     haystack = (name + " " + version + " " + sha + " " + tarball + " " + lic + " " + ids).lower()
-                    rows.append((name, version, level, lic, tarball, sha, deps, links, haystack))
+                    cached = bool(d.get("c")); latest = bool(d.get("n2"))
+                    if "c" in d or "n2" in d:
+                        scoped = True
+                    rows.append((name, version, level, lic, tarball, sha, deps, links, haystack, cached, latest))
         except OSError as e:
             log.warning("Cannot read index: %s", e)
             return self._rows
         with self._lock:
             self._rows, self._mtime = rows, mtime
-        log.info("Index loaded: %s rows", len(rows))
+        log.info("Index loaded: %s rows (scope flags: %s)", len(rows), scoped)
         return rows
 
 
 INDEX = None
+scoped = False
 SUMMARY = {"path": None, "mtime": None, "data": {}}
 
 
@@ -208,12 +214,25 @@ def render_portal(rows, summary, query, state=None):
     packages = rows
     q = (query.get("q") or [""])[0].strip().lower()
     risk = (query.get("risk") or [""])[0].strip()
+    scope = (query.get("scope") or ["relevant"])[0].strip() or "relevant"
     try:
         page = max(1, int((query.get("page") or ["1"])[0]))
     except ValueError:
         page = 1
 
+    def in_scope(r):
+        if not scoped or scope == "all":
+            return True
+        cached, latest = r[9], r[10]
+        if scope == "cached":
+            return cached
+        if scope == "latest":
+            return latest
+        return cached or latest
+
     def matches_row(r):
+        if not in_scope(r):
+            return False
         if risk and r[2] != risk:
             return False
         return not q or q in r[8]
@@ -224,7 +243,7 @@ def render_portal(rows, summary, query, state=None):
     chunk = hits[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
 
     html_rows = []
-    for name, version, level, license_, tarball, sha, deps, links, _hay in chunk:
+    for name, version, level, license_, tarball, sha, deps, links, _hay, _cached, _latest in chunk:
         vuln_html = "<br>".join(
             f'<a target="_blank" rel="noopener" href="{esc(x.get("u", ""))}">{esc(x.get("i", ""))}</a> ({esc(x.get("s", ""))})'
             for x in links) or "—"
@@ -237,6 +256,10 @@ def render_portal(rows, summary, query, state=None):
         ]) + "</tr>")
     body = "\n".join(html_rows) or '<tr><td colspan="8">No matching package versions.</td></tr>'
 
+    scoped_total = sum(1 for r in packages if in_scope(r))
+    count_text = f"{len(hits)} matching of {scoped_total} in scope"
+    if scoped_total != len(packages):
+        count_text += f" / {len(packages)} total"
     cards = [("Unique packages", summary.get("unique_packages", 0)), ("Package versions", summary.get("package_versions", 0)),
              ("Tarballs hashed", summary.get("tarballs_scanned", 0)),
              ("Vulnerable versions", summary.get("versions_with_vulnerabilities", 0)),
@@ -245,9 +268,15 @@ def render_portal(rows, summary, query, state=None):
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
                     for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING", "UNKNOWN"))
+    scope_labels = {"relevant": "Registry relevant (cached or latest)", "all": "All versions",
+                    "cached": "Cached tarballs only", "latest": "Latest version only"}
+    scopes = "".join(f'<option value="{esc(k)}"{" selected" if k == scope else ""}>{esc(v)}</option>'
+                     for k, v in scope_labels.items())
+    if not scoped:
+        scopes = '<option value="all">All versions (index without scope flags)</option>' 
 
     def link(target):
-        return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"page={target}"])
+        return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"scope={quote(scope)}", f"page={target}"])
 
     pager = ""
     if pages > 1:
@@ -266,7 +295,7 @@ def render_portal(rows, summary, query, state=None):
     page = PORTAL_HEAD
     for key, value in {
             "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks,
-            "count": f"{len(hits)} matching of {len(packages)} package versions",
+            "count": count_text,
             "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
