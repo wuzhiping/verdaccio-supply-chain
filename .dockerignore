@@ -1,0 +1,6 @@
+.git
+.env
+reports/*
+__pycache__
+*.pyc
+verdaccio-data

@@ -1,0 +1,30 @@
+services:
+  verdaccio-supply-chain:
+    build: .
+    image: local/verdaccio-supply-chain:1.0.0
+    container_name: verdaccio-supply-chain
+    restart: unless-stopped
+    environment:
+      SCAN_ROOT: /verdaccio-data
+      REPORT_DIR: /reports
+      SCAN_INTERVAL_HOURS: "24"
+      SCAN_ON_START: "true"
+      OSV_ENABLED: "true"
+      OSV_API_URL: https://api.osv.dev/v1/querybatch
+      OSV_BATCH_SIZE: "100"
+      OSV_TIMEOUT_SECONDS: "30"
+      OSV_RETRIES: "2"
+      MAX_TARBALL_MB: "2048"
+      LOG_LEVEL: INFO
+      TZ: Asia/Taipei
+    volumes:
+      - ${VERDACCIO_DATA:-./verdaccio-data}:/verdaccio-data:ro
+      - ./reports:/reports
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 2.0
