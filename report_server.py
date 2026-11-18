@@ -17,7 +17,59 @@ COOKIE = "sbom_token"
 HEALTH_PATH = "/healthz"
 SCAN_PATH = "/api/scan"
 SCAN_STATUS_PATHS = (SCAN_PATH, SCAN_PATH + "/status")
+PROGRESS_PATH = "/progress"
 RETRY_AFTER = os.getenv("SCAN_RETRY_AFTER_SECONDS", "10")
+
+PROGRESS_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Scan progress</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+header{background:#172b4d;color:#fff;padding:22px 20px}header h1{margin:0;font-size:21px}header p{color:#cbd6e8;margin:6px 0 0}
+main{max-width:920px;margin:22px auto;padding:0 18px}
+.card{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
+.bar{height:16px;background:#eef1f5;border-radius:20px;overflow:hidden;margin:8px 0 14px}
+.bar>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#315fbd,#5b8def);transition:width .4s}
+table{border-collapse:collapse;width:100%}td,th{padding:7px 4px;border-bottom:1px solid #e5e9f0;text-align:left;vertical-align:top}
+th{width:150px;color:#526078;font-weight:600}.mono{font-family:ui-monospace,monospace;font-size:12px}
+button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff;font-size:14px;cursor:pointer}
+button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
+</style></head><body><header><h1>Scan progress</h1><p id="state">loading…</p></header>
+<main><section class="card"><div class="bar"><span id="fill"></span></div>
+<table><tr><th>Phase</th><td id="phase">-</td></tr>
+<tr><th>Progress</th><td id="pct">-</td></tr>
+<tr><th>Processed</th><td id="count" class="mono">-</td></tr>
+<tr><th>Detail</th><td id="msg">-</td></tr>
+<tr><th>Elapsed</th><td id="elapsed">-</td></tr>
+<tr><th>Last scan</th><td id="last">-</td></tr>
+<tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
+<section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
+<p><a href="/">Open latest report</a></p></section></main>
+<script>
+const $=id=>document.getElementById(id);
+async function poll(){
+ try{
+  const d=await (await fetch('/api/scan',{headers:{Accept:'application/json'}})).json();
+  const p=d.progress||{};
+  $('state').textContent=(d.running?'SCAN RUNNING':'IDLE')+' · phase='+d.phase;
+  $('phase').textContent=p.phase||'-';
+  const known=(p.percent!==null&&p.percent!==undefined);
+  $('fill').style.width=(known?p.percent:0)+'%';
+  $('pct').textContent=known?p.percent+'%':'—';
+  $('count').textContent=(p.current||0)+(p.total?' / '+p.total:'');
+  $('msg').textContent=p.message||'-';
+  $('elapsed').textContent=(d.elapsed_seconds===null||d.elapsed_seconds===undefined)?'-':d.elapsed_seconds+' s';
+  $('updated').textContent=p.updated_at||'-';
+  const s=d.last_summary;
+  $('last').textContent=s?('packages '+s.unique_packages+' · versions '+s.package_versions+
+    ' · findings '+s.vulnerability_findings+' · '+(s.duration_seconds||0)+'s'):'—';
+ }catch(e){$('state').textContent='error: '+e}
+}
+$('go').addEventListener('click',async()=>{
+ const r=await fetch('/api/scan',{method:'POST'});
+ $('gomsg').textContent=r.status===202?'scan scheduled':(r.status===429?'a scan is already running':'failed: HTTP '+r.status);
+ poll();
+});
+poll();setInterval(poll,2000);
+</script></body></html>"""
 
 
 class ReportHandler(SimpleHTTPRequestHandler):
@@ -91,6 +143,16 @@ class ReportHandler(SimpleHTTPRequestHandler):
     def _scan_status(self):
         self._json(200, CONTROL.status())
 
+    def _progress_page(self):
+        body = PROGRESS_HTML.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
     def _trigger_scan(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length:
@@ -112,6 +174,9 @@ class ReportHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path in SCAN_STATUS_PATHS:
             self._scan_status()
+            return
+        if parsed.path == PROGRESS_PATH:
+            self._progress_page()
             return
         if TOKEN and "token" in parse_qs(parsed.query):
             clean = dict(parse_qs(parsed.query))

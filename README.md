@@ -62,6 +62,7 @@ The HTTP service also exposes a small REST API to start a scan on demand:
 | `POST /api/scan` | `429 Too Many Requests` | A scan is already running (`Retry-After` header included) |
 | `GET /api/scan` | `200 OK` | Current state (`phase`, `running`, timings, last summary) |
 | `GET /api/scan/status` | `200 OK` | Alias of `GET /api/scan` |
+| `GET /progress` | `200 OK` | Live progress page (auto-refreshing, has a "Run scan now" button) |
 | `GET /healthz` | `200 OK` | Health probe |
 
 ```bash
@@ -71,6 +72,16 @@ curl -X POST http://<host>:8080/api/scan
 # poll the state
 curl -s http://<host>:8080/api/scan | python3 -m json.tool
 ```
+
+`GET /api/scan` also carries the live `progress` object:
+
+```json
+{"phase": "idle", "running": true, "elapsed_seconds": 3.1,
+ "progress": {"phase": "hashing", "current": 10, "total": 12, "percent": 83.3,
+              "message": "big6-1.0.0.tgz", "updated_at": "2026-11-18T07:08:12+00:00"}}
+```
+
+Phases are `discovering` (package metadata) → `hashing` (tarball identity) → `osv` (vulnerability lookup) → `reporting` → `notifying` → `completed`. The same progress is written to the log every 5% as `Scan progress: hashing 150/300 (50.0%) …`.
 
 Only one scan may run at a time. While a scan is in progress further triggers are rejected with `429` and the body `{"error": "scan_in_progress", ...}`; the rejected requests are counted in `requests_rejected`. The API uses the same `REPORT_TOKEN` as the report portal (send `Authorization: Bearer <token>` or `?token=<token>`), so trigger it with the same credential used to read the reports.
 

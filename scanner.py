@@ -61,18 +61,64 @@ def add_packument(records, obj):
             "source": "metadata"
         })
 
-def manifest_from_tgz(path):
+def read_manifest(tf):
+    candidates = [m for m in tf.getmembers() if m.isfile() and m.name.endswith("package/package.json")]
+    if not candidates: return None, "no package/package.json member"
     try:
-        with tarfile.open(path, "r:gz") as tf:
-            candidates = [m for m in tf.getmembers() if m.isfile() and m.name.endswith("package/package.json")]
-            if not candidates: return None
-            stream = tf.extractfile(min(candidates, key=lambda m: len(m.name)))
-            raw = stream.read(2 * 1024 * 1024 + 1) if stream else b""
-            if len(raw) > 2 * 1024 * 1024: return None
-            obj = json.loads(raw.decode("utf-8"))
-            return obj if isinstance(obj, dict) else None
-    except Exception:
-        return None
+        stream = tf.extractfile(min(candidates, key=lambda m: len(m.name)))
+        raw = stream.read(2 * 1024 * 1024 + 1) if stream else b""
+    except Exception as e:
+        return None, f"cannot read manifest: {type(e).__name__}: {e}"
+    if len(raw) > 2 * 1024 * 1024: return None, "manifest larger than 2 MiB"
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        return None, f"invalid manifest JSON: {e}"
+    if not isinstance(obj, dict): return None, "manifest is not a JSON object"
+    return obj, ""
+
+def manifest_from_tgz(path):
+    """Return (manifest, reason); manifest is None when the manifest cannot be read."""
+    errors = []
+    for mode in ("r:gz", "r:*"):
+        try:
+            with tarfile.open(path, mode) as tf:
+                return read_manifest(tf)
+        except Exception as e:
+            errors.append(f"{mode}: {type(e).__name__}: {e}")
+    return None, "; ".join(errors)
+
+def progress(phase, current, total, message=""):
+    """Publish scan progress for the status API and log it periodically."""
+    CONTROL.set_progress(phase, current, total, message)
+    if total:
+        step = max(1, total // 20)
+        if current == total or current % step == 0:
+            log.info("Scan progress: %s %s/%s (%.1f%%) %s", phase, current, total,
+                     current * 100.0 / total, message)
+
+def identify_from_path(path, records=None):
+    """Derive name@version from the registry layout, e.g. @scope/pkg/pkg-1.0.0.tgz."""
+    try:
+        parts = path.relative_to(ROOT).parts
+    except ValueError:
+        parts = path.parts
+    if len(parts) < 2: return None
+    filename = parts[-1]
+    if not filename.endswith(".tgz"): return None
+    dirs = list(parts[:-1])
+    if dirs and dirs[-1] == "-": dirs.pop()
+    if not dirs: return None
+    name = dirs[-2] + "/" + dirs[-1] if len(dirs) >= 2 and dirs[-2].startswith("@") else dirs[-1]
+    base = name.split("/")[-1]
+    stem = filename[:-4]
+    if stem.startswith(base + "-"):
+        version = stem[len(base) + 1:]
+        if version: return name, version
+    if records:
+        version = stem.rsplit("-", 1)[-1]
+        if version and f"{name}@{version}" in records: return name, version
+    return None
 
 def sha256(path):
     h = hashlib.sha256()
@@ -82,28 +128,43 @@ def sha256(path):
 
 def discover():
     records = {}
-    for p in ROOT.rglob("*.json"):
-        obj = read_json(p)
-        add_packument(records, obj)
+    json_files = list(ROOT.rglob("*.json"))
+    progress("discovering", 0, len(json_files), "reading package metadata")
+    for i, p in enumerate(json_files, 1):
+        add_packument(records, read_json(p))
+        if i % 250 == 0:
+            progress("discovering", i, len(json_files), f"{len(records)} package versions")
     for p in ROOT.rglob(".verdaccio-db.json"):
         add_packument(records, read_json(p))
     tarballs = skipped = 0
-    for p in ROOT.rglob("*.tgz"):
+    tgz_files = list(ROOT.rglob("*.tgz"))
+    for i, p in enumerate(tgz_files, 1):
         try:
             if p.stat().st_size > MAX_BYTES:
                 skipped += 1
                 log.warning("Tarball exceeds MAX_TARBALL_MB, skipped: %s", p)
                 continue
-            manifest = manifest_from_tgz(p)
-            if not manifest or not isinstance(manifest.get("name"), str) or not isinstance(manifest.get("version"), str):
-                log.warning("Cannot identify tarball package/version: %s", p)
-                continue
-            name, ver = manifest["name"], manifest["version"]
+            manifest, reason = manifest_from_tgz(p)
+            name = ver = None
+            if isinstance(manifest, dict):
+                name, ver = manifest.get("name"), manifest.get("version")
+            if not isinstance(name, str) or not isinstance(ver, str):
+                fallback = identify_from_path(p, records)
+                if fallback:
+                    name, ver = fallback
+                    log.warning("Tarball manifest unreadable (%s), package identified from path: %s@%s",
+                                reason, name, ver)
+                else:
+                    log.warning("Cannot identify tarball package/version (%s): %s", reason, p)
+                    continue
             rec = records.setdefault(name + "@" + ver, {"name": name, "version": ver})
-            rec.setdefault("description", manifest.get("description", ""))
-            rec.setdefault("license", license_text(manifest.get("license")))
-            for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
-                rec.setdefault(field, deps(manifest.get(field)))
+            if isinstance(manifest, dict):
+                rec.setdefault("description", manifest.get("description", ""))
+                rec.setdefault("license", license_text(manifest.get("license")))
+                for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+                    rec.setdefault(field, deps(manifest.get(field)))
+            else:
+                rec["tarball_manifest_error"] = reason
             rec["tarball_path"] = str(p.relative_to(ROOT))
             rec["tarball_size"] = p.stat().st_size
             rec["sha256"] = sha256(p)
@@ -111,6 +172,8 @@ def discover():
             tarballs += 1
         except OSError as e:
             log.warning("Cannot scan %s: %s", p, e)
+        finally:
+            progress("hashing", i, len(tgz_files), p.name)
     return records, tarballs, skipped
 
 def severity(v):
@@ -164,6 +227,7 @@ def scan_vulnerabilities(records):
                 rec["vulnerabilities"] = []
                 rec["vulnerability_scan_error"] = str(e)
             log.exception("OSV batch failed")
+        progress("osv", i + len(group), len(items), f"{len(items)} package versions")
     return total, "; ".join(errors) if errors else None
 
 def build_report():
@@ -248,12 +312,15 @@ def write_report(report):
 def run():
     CONTROL.begin()
     try:
+        progress("scanning", 0, 0, "scanning storage")
         r = build_report()
+        progress("reporting", 1, 1, "writing report")
         write_report(r)
         s = r["summary"]
         log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s",
                  s["unique_packages"], s["package_versions"], s["tarballs_scanned"], s["vulnerability_findings"])
         try:
+            progress("notifying", 1, 1, "publishing notifications")
             notifier.notify(r)
         except Exception:
             log.exception("Risk notification failed")
