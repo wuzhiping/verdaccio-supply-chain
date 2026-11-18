@@ -7,7 +7,7 @@ from collections import Counter
 
 import report_server
 import notifier
-from scan_control import CONTROL, LOCK, REPORTS
+from scan_control import CONTROL, LOCK
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
@@ -419,6 +419,36 @@ def prune_archives():
         except OSError:
             pass
 
+def write_index(report):
+    """Write a compact index the portal can page through without the full report."""
+    summary = dict(report.get("summary", {}))
+    summary["generated_at"] = report.get("generated_at")
+    summary["schema"] = report.get("schema")
+    summary["osv_error"] = report.get("osv", {}).get("error")
+    summary["osv_enabled"] = report.get("osv", {}).get("enabled", True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    spath = OUT / "summary.json"
+    stmp = spath.with_name(spath.name + ".tmp")
+    stmp.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    stmp.replace(spath)
+    path = OUT / "index.jsonl"
+    tmp = path.with_name(path.name + ".tmp")
+    pending = report.get("scan_state") == "pending"
+    with tmp.open("w", encoding="utf-8") as fh:
+        for r in report["packages"]:
+            vulns = r.get("vulnerabilities", [])
+            level = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x: RANK.get(x, 0),
+                        default="PENDING" if pending else "NONE")
+            links = [{"i": v.get("id", "UNKNOWN"), "s": v.get("severity", "UNKNOWN"),
+                      "u": (v.get("references") or ["https://osv.dev/vulnerability/" + v.get("id", "")])[0]}
+                     for v in vulns]
+            fh.write(json.dumps({"n": r.get("name", ""), "v": r.get("version", ""), "r": level,
+                                 "l": r.get("license", "UNKNOWN"), "t": r.get("tarball_file", ""),
+                                 "h": r.get("sha256", ""), "d": r.get("dependencies", ""),
+                                 "x": links}, ensure_ascii=False) + "\n")
+    tmp.replace(path)
+    log.info("Index written: %s (%s)", path, human_size(path.stat().st_size))
+
 def write_report(report):
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -481,12 +511,14 @@ def run():
         summarize(r)
         r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
         progress("reporting", 1, 1, "writing report")
-        REPORTS.set(r)
         write_report(r)
+        write_index(r)
         s = r["summary"]
         log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s peak_rss=%sMB",
                  s["unique_packages"], s["package_versions"], s["tarballs_scanned"],
                  s["vulnerability_findings"], peak_memory_mb())
+        r["packages"] = []
+        records.clear()
         try:
             progress("notifying", 1, 1, "publishing notifications")
             notifier.notify(r)

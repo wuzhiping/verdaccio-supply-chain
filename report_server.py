@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, quote, unquote
 
-from scan_control import CONTROL, LOCK, REPORTS
+from scan_control import CONTROL, LOCK
 
 log = logging.getLogger("supply-chain.http")
 RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0}
@@ -110,16 +110,80 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 <div class="meta">JSON schema: {{schema}} · <a href="/latest.json">latest.json</a> · <a href="/progress">scan progress</a></div>{{notice}}</section></main></body></html>"""
 
 
+class IndexStore:
+    """Lazy loaded compact index, the portal never needs the full report in memory."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._lock = threading.Lock()
+        self._rows = []
+        self._mtime = None
+
+    def rows(self):
+        try:
+            mtime = self.path.stat().st_mtime
+        except OSError:
+            with self._lock:
+                self._rows, self._mtime = [], None
+            return []
+        with self._lock:
+            if self._mtime == mtime:
+                return self._rows
+        rows = []
+        try:
+            with self.path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    name = str(d.get("n", "")); version = str(d.get("v", ""))
+                    level = str(d.get("r", "NONE")); lic = str(d.get("l", "UNKNOWN"))
+                    tarball = str(d.get("t", "")); sha = str(d.get("h", ""))
+                    deps = str(d.get("d", "")); links = d.get("x") or []
+                    ids = " ".join(str(x.get("i", "")) for x in links)
+                    haystack = (name + " " + version + " " + sha + " " + tarball + " " + lic + " " + ids).lower()
+                    rows.append((name, version, level, lic, tarball, sha, deps, links, haystack))
+        except OSError as e:
+            log.warning("Cannot read index: %s", e)
+            return self._rows
+        with self._lock:
+            self._rows, self._mtime = rows, mtime
+        log.info("Index loaded: %s rows", len(rows))
+        return rows
+
+
+INDEX = None
+SUMMARY = {"path": None, "mtime": None, "data": {}}
+
+
+def summary_file():
+    """Summary of the last completed scan, survives a restart."""
+    path = ROOT / "summary.json"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        SUMMARY["path"], SUMMARY["mtime"], SUMMARY["data"] = path, None, {}
+        return {}
+    if SUMMARY["mtime"] == mtime:
+        return SUMMARY["data"]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    SUMMARY["path"], SUMMARY["mtime"], SUMMARY["data"] = path, mtime, data
+    return data
+
+
 def esc(value):
     import html as _html
     return _html.escape(str(value if value is not None else ""), quote=True)
 
 
-def render_portal(report, query):
+def render_portal(rows, summary, query, state=None):
     """Server side pagination and search, the browser only receives one page."""
-    packages = report.get("packages", [])
-    summary = report.get("summary", {})
-    pending = report.get("scan_state") == "pending"
+    summary = summary or {}
+    packages = rows
     q = (query.get("q") or [""])[0].strip().lower()
     risk = (query.get("risk") or [""])[0].strip()
     try:
@@ -127,46 +191,34 @@ def render_portal(report, query):
     except ValueError:
         page = 1
 
-    def level_of(r):
-        vulns = r.get("vulnerabilities", [])
-        return max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x: RANK.get(x, 0),
-                   default="PENDING" if pending else "NONE")
-
     def matches_row(r):
-        if risk and level_of(r) != risk:
+        if risk and r[2] != risk:
             return False
-        if not q:
-            return True
-        haystack = (str(r.get("name", "")) + " " + str(r.get("version", "")) + " " + str(r.get("sha256", "")) +
-                    " " + str(r.get("tarball_file", "")) + " " + str(r.get("license", "")) + " " +
-                    " ".join(str(v.get("id", "")) for v in r.get("vulnerabilities", []))).lower()
-        return q in haystack
+        return not q or q in r[8]
 
     hits = [r for r in packages if matches_row(r)]
     pages = max(1, (len(hits) + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(page, pages)
     chunk = hits[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
 
-    rows = []
-    for r in chunk:
-        vulns = r.get("vulnerabilities", [])
-        level = level_of(r)
+    html_rows = []
+    for name, version, level, license_, tarball, sha, deps, links, _hay in chunk:
         vuln_html = "<br>".join(
-            f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/" + v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})'
-            for v in vulns) or ('<span class="pending">PENDING</span>' if pending else "—")
-        dep = ", ".join(str(r.get("dependencies", "")).split(",")[:5])
-        rows.append("<tr>" + "".join([
-            f"<td>{esc(r.get('name'))}</td><td>{esc(r.get('version'))}</td>",
+            f'<a target="_blank" rel="noopener" href="{esc(x.get("u", ""))}">{esc(x.get("i", ""))}</a> ({esc(x.get("s", ""))})'
+            for x in links) or "—"
+        dep = ", ".join(deps.split(",")[:5]) if deps else ""
+        html_rows.append("<tr>" + "".join([
+            f"<td>{esc(name)}</td><td>{esc(version)}</td>",
             f'<td><span class="risk {level.lower()}">{level}</span></td>',
-            f"<td>{esc(r.get('license', 'UNKNOWN'))}</td><td>{esc(r.get('tarball_file', 'not found'))}</td>",
-            f"<td><code>{esc(r.get('sha256', 'not calculated'))}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
+            f"<td>{esc(license_)}</td><td>{esc(tarball or 'not found')}</td>",
+            f"<td><code>{esc(sha or 'not calculated')}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
         ]) + "</tr>")
-    body = "\n".join(rows) or '<tr><td colspan="8">No matching package versions.</td></tr>'
+    body = "\n".join(html_rows) or '<tr><td colspan="8">No matching package versions.</td></tr>'
 
     cards = [("Unique packages", summary.get("unique_packages", 0)), ("Package versions", summary.get("package_versions", 0)),
              ("Tarballs hashed", summary.get("tarballs_scanned", 0)),
-             ("Vulnerable versions", "—" if pending else summary.get("versions_with_vulnerabilities", 0)),
-             ("Vulnerability findings", "—" if pending else summary.get("vulnerability_findings", 0)),
+             ("Vulnerable versions", summary.get("versions_with_vulnerabilities", 0)),
+             ("Vulnerability findings", summary.get("vulnerability_findings", 0)),
              ("Dependency edges", summary.get("dependency_edges", 0))]
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
@@ -182,17 +234,18 @@ def render_portal(report, query):
         pager = (f'<div class="toolbar"><span class="meta">Page {page} / {pages} &middot; {len(hits)} matches</span>'
                  f"{prev} &nbsp; {nxt}</div>")
     notice = ""
-    if pending:
-        notice = '<p class="notice">Scan in progress &middot; vulnerability lookup is still pending</p>'
-    elif report.get("osv", {}).get("error"):
-        notice = f'<p class="notice">OSV query warning: {esc(report["osv"]["error"])}</p>'
-    subtitle = (f'Full registry scan · {esc(report.get("generated_at", ""))} · '
-                f'OSV {"enabled" if report.get("osv", {}).get("enabled") else "disabled"}')
+    if state and state.get("running"):
+        notice = ('<p class="notice">A scan is running &middot; this page shows the last completed report '
+                  f'({esc(state.get("phase", ""))})</p>')
+    elif summary.get("osv_error"):
+        notice = f'<p class="notice">OSV query warning: {esc(summary["osv_error"])}</p>'
+    subtitle = (f'Full registry scan · {esc(summary.get("generated_at", ""))} · '
+                f'OSV {"enabled" if summary.get("osv_enabled", True) else "disabled"}')
     page = PORTAL_HEAD
     for key, value in {
             "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks,
             "count": f"{len(hits)} matching of {len(packages)} package versions",
-            "rows": body, "pager": pager, "schema": esc(report.get("schema", "")), "notice": notice}.items():
+            "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
     return page
 
@@ -329,10 +382,13 @@ class ReportHandler(SimpleHTTPRequestHandler):
             self._progress_page()
             return
         if parsed.path in ("/", "/index.html"):
-            report = REPORTS.get()
-            if report is not None:
-                self._portal(render_portal(report, parse_qs(parsed.query)))
-                return
+            rows = INDEX.rows()
+            status = CONTROL.status()
+            summary = dict(summary_file() or status.get("last_summary") or {})
+            if status.get("last_error"):
+                summary["osv_error"] = status["last_error"]
+            self._portal(render_portal(rows, summary, parse_qs(parsed.query), status))
+            return
         handle = self.send_head()
         if handle is None:
             return
@@ -384,7 +440,10 @@ class ReportHandler(SimpleHTTPRequestHandler):
 
 
 def start_server():
+    global INDEX
     ROOT.mkdir(parents=True, exist_ok=True)
+    if INDEX is None:
+        INDEX = IndexStore(ROOT / "index.jsonl")
     httpd = ThreadingHTTPServer((BIND, PORT), ReportHandler)
     httpd.daemon_threads = True
     thread = threading.Thread(target=httpd.serve_forever, name="report-http", daemon=True)
