@@ -7,7 +7,7 @@ from collections import Counter
 
 import report_server
 import notifier
-from scan_control import CONTROL
+from scan_control import CONTROL, LOCK
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
@@ -17,6 +17,7 @@ OSV_URL = os.getenv("OSV_API_URL", "https://api.osv.dev/v1/querybatch")
 BATCH = max(1, min(1000, int(os.getenv("OSV_BATCH_SIZE", "100"))))
 TIMEOUT = max(5, int(os.getenv("OSV_TIMEOUT_SECONDS", "30")))
 RETRIES = max(0, int(os.getenv("OSV_RETRIES", "2")))
+BUDGET = max(0, int(os.getenv("OSV_TIME_BUDGET_SECONDS", "900")))
 MAX_BYTES = max(1, int(os.getenv("MAX_TARBALL_MB", "2048"))) * 1024 * 1024
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(),
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -91,6 +92,7 @@ def manifest_from_tgz(path):
 def progress(phase, current, total, message=""):
     """Publish scan progress for the status API and log it periodically."""
     CONTROL.set_progress(phase, current, total, message)
+    LOCK.heartbeat()
     if total:
         step = max(1, total // 20)
         if current == total or current % step == 0:
@@ -208,7 +210,17 @@ def scan_vulnerabilities(records):
     if not OSV: return 0, "OSV disabled"
     items = list(records.values())
     total, errors = 0, []
+    started = time.monotonic()
+    deadline = started + BUDGET if BUDGET else None
     for i in range(0, len(items), BATCH):
+        if deadline and time.monotonic() > deadline:
+            remaining = items[i:]
+            for rec in remaining:
+                rec["vulnerabilities"] = []
+                rec["vulnerability_scan_error"] = "not queried, OSV time budget exhausted"
+            errors.append(f"time budget of {BUDGET}s exhausted, {len(remaining)} package versions not queried")
+            log.warning("OSV time budget exhausted, %s package versions not queried", len(remaining))
+            break
         group = items[i:i+BATCH]
         try:
             results = query_osv(group)
@@ -227,33 +239,40 @@ def scan_vulnerabilities(records):
                 rec["vulnerabilities"] = []
                 rec["vulnerability_scan_error"] = str(e)
             log.exception("OSV batch failed")
-        progress("osv", i + len(group), len(items), f"{len(items)} package versions")
+        progress("osv", i + len(group), len(items),
+                 f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
     return total, "; ".join(errors) if errors else None
 
-def build_report():
-    start = time.monotonic()
-    if not ROOT.is_dir(): raise FileNotFoundError(f"SCAN_ROOT is not a directory: {ROOT}")
-    records, tarballs, skipped = discover()
-    items = sorted(records.values(), key=lambda x: (x["name"].lower(), x["version"]))
-    vuln_total, osv_error = scan_vulnerabilities(records)
+def summarize(report):
+    """Recompute the summary counters from the package list."""
     sev, licenses, names = Counter(), Counter(), set()
     edges = vulnerable = 0
-    for r in items:
+    for r in report["packages"]:
         names.add(r["name"])
         licenses[r.get("license", "UNKNOWN")] += 1
         edges += sum(len(r.get(k, {})) for k in ("dependencies", "optionalDependencies", "peerDependencies"))
         if r.get("vulnerabilities"): vulnerable += 1
         for v in r.get("vulnerabilities", []): sev[v.get("severity", "UNKNOWN")] += 1
-    return {
+    report["summary"].update({
+        "unique_packages": len(names), "package_versions": len(report["packages"]),
+        "versions_with_vulnerabilities": vulnerable, "vulnerability_findings": sum(sev.values()),
+        "dependency_edges": edges, "severity": {k: sev[k] for k in RANK},
+        "licenses": dict(licenses.most_common())})
+
+def build_report(records, tarballs, skipped):
+    items = sorted(records.values(), key=lambda x: (x["name"].lower(), x["version"]))
+    report = {
         "schema": "verdaccio-supply-chain-report/v1", "generated_at": now(),
         "scan_mode": "full", "scan_root": str(ROOT),
-        "summary": {"unique_packages": len(names), "package_versions": len(items),
+        "summary": {"unique_packages": 0, "package_versions": len(items),
           "tarballs_scanned": tarballs, "tarballs_skipped_oversize": skipped,
-          "versions_with_vulnerabilities": vulnerable, "vulnerability_findings": vuln_total,
-          "dependency_edges": edges, "severity": {k: sev[k] for k in RANK},
-          "licenses": dict(licenses.most_common()), "duration_seconds": round(time.monotonic()-start, 2)},
-        "osv": {"enabled": OSV, "error": osv_error}, "packages": items
-    }
+          "versions_with_vulnerabilities": 0, "vulnerability_findings": 0,
+          "dependency_edges": 0, "severity": {k: 0 for k in RANK},
+          "vulnerability_scan_incomplete": False, "licenses": {}, "duration_seconds": 0},
+        "osv": {"enabled": OSV, "error": None, "packages_queried": 0, "packages_failed": 0},
+        "packages": items}
+    summarize(report)
+    return report
 
 def esc(x):
     return html.escape(str(x if x is not None else ""), quote=True)
@@ -310,10 +329,31 @@ def write_report(report):
     log.info("Reports written: %s ; %s", hp, jp)
 
 def run():
+    if LOCK.held_by_other() and LOCK.owner_alive():
+        log.warning("Another scanner is active on this report directory, skipping this scan")
+        CONTROL.end(error="another scanner is active")
+        return
+    LOCK.claim()
     CONTROL.begin()
+    started = time.monotonic()
     try:
+        if not ROOT.is_dir(): raise FileNotFoundError(f"SCAN_ROOT is not a directory: {ROOT}")
         progress("scanning", 0, 0, "scanning storage")
-        r = build_report()
+        records, tarballs, skipped = discover()
+        r = build_report(records, tarballs, skipped)
+        r["osv"]["error"] = "vulnerability lookup pending"
+        r["summary"]["vulnerability_scan_incomplete"] = True
+        r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
+        progress("reporting", 1, 1, "writing inventory report")
+        write_report(r)
+        log.info("Inventory report written, %s package versions", len(records))
+        progress("osv", 0, len(records), "vulnerability lookup")
+        vuln_total, osv_error = scan_vulnerabilities(records)
+        r["osv"]["error"] = osv_error
+        r["summary"]["vulnerability_findings"] = vuln_total
+        r["summary"]["vulnerability_scan_incomplete"] = bool(osv_error)
+        summarize(r)
+        r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
         progress("reporting", 1, 1, "writing report")
         write_report(r)
         s = r["summary"]

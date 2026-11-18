@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, quote, unquote
 
-from scan_control import CONTROL
+from scan_control import CONTROL, LOCK
 
 log = logging.getLogger("supply-chain.http")
 
@@ -172,6 +172,11 @@ class ReportHandler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length:
             self.rfile.read(length)
+        if LOCK.held_by_other():
+            self._json(429, {"error": "another_scanner_active",
+                             "detail": "another scanner is working on this report directory",
+                             **CONTROL.status()}, {"Retry-After": RETRY_AFTER})
+            return
         accepted, detail = CONTROL.request()
         if not accepted:
             self._json(429, {"error": "scan_in_progress", "detail": detail, **CONTROL.status()},

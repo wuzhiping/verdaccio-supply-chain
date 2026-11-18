@@ -97,7 +97,19 @@ curl -s http://<host>:8080/api/scan | python3 -m json.tool
               "message": "big6-1.0.0.tgz", "updated_at": "2026-11-18T07:08:12+00:00"}}
 ```
 
-Phases are `discovering` (package metadata) → `hashing` (tarball identity) → `osv` (vulnerability lookup) → `reporting` → `notifying` → `completed`. The same progress is written to the log every 5% as `Scan progress: hashing 150/300 (50.0%) …`.
+Phases are `discovering` (package metadata) → `hashing` (tarball identity) → `reporting` (inventory written) → `osv` (vulnerability lookup) → `reporting` (final report) → `notifying` → `completed`. The same progress is written to the log every 5% as `Scan progress: hashing 150/300 (50.0%) …`.
+
+The inventory report is written **before** the vulnerability lookup starts, so the portal always shows the package inventory even when the OSV phase is slow or fails. The vulnerability lookup is bounded by `OSV_TIME_BUDGET_SECONDS` (900s by default); when the budget is exhausted the remaining packages are marked as not queried and the report is flagged as incomplete.
+
+### Two scanners on the same storage
+
+A second scanner working on the same report directory is detected through a lock file (`REPORT_DIR/.scan.lock`):
+
+- a scheduled scan skips with `Another scanner is active on this report directory` and does not touch the reports,
+- `POST /api/scan` answers `429 {"error": "another_scanner_active"}`,
+- the lock is refreshed while a scan runs, so a dead scanner is taken over automatically.
+
+Set `SCAN_LOCK_STALE_SECONDS` (180) to change how long a lock is considered live.
 
 Only one scan may run at a time. While a scan is in progress further triggers are rejected with `429` and the body `{"error": "scan_in_progress", ...}`; the rejected requests are counted in `requests_rejected`. The API uses the same `REPORT_TOKEN` as the report portal (send `Authorization: Bearer <token>` or `?token=<token>`), so trigger it with the same credential used to read the reports.
 

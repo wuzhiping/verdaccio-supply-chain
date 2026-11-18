@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Shared scan state and on-demand trigger; Python standard library only."""
-import threading, time
+import os, socket, threading, time
 from datetime import datetime, timezone
+from pathlib import Path
 
 IDLE = "idle"
 REQUESTED = "requested"
@@ -10,6 +11,61 @@ RUNNING = "running"
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+class ScanLock:
+    """Detect a second scanner working on the same report directory."""
+
+    def __init__(self, path, stale_seconds):
+        self.path = Path(path)
+        self.stale = max(30, int(stale_seconds))
+        self.host = socket.gethostname()
+
+    def _owner(self):
+        try:
+            text = self.path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None, None
+        parts = dict(p.split("=", 1) for p in text.split() if "=" in p)
+        return parts.get("pid"), parts.get("host")
+
+    def held_by_other(self):
+        """True when another host/container refreshed the lock recently."""
+        try:
+            if not self.path.exists():
+                return False
+            pid, host = self._owner()
+            if host == self.host:
+                return False
+            return (time.time() - self.path.stat().st_mtime) < self.stale
+        except OSError:
+            return False
+
+    def owner_alive(self, wait=3):
+        """True when the lock file keeps being refreshed by a live scanner."""
+        try:
+            before = self.path.stat().st_mtime
+        except OSError:
+            return False
+        time.sleep(wait)
+        try:
+            return self.path.stat().st_mtime > before
+        except OSError:
+            return False
+
+    def claim(self):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(f"pid={os.getpid()} host={self.host} started={now_iso()}\n",
+                                 encoding="utf-8")
+        except OSError:
+            pass
+
+    def heartbeat(self):
+        try:
+            self.path.touch()
+        except OSError:
+            pass
 
 
 class ScanControl:
@@ -103,3 +159,5 @@ class ScanControl:
 
 
 CONTROL = ScanControl()
+LOCK = ScanLock(os.getenv("REPORT_DIR", "/reports") + "/.scan.lock",
+                os.getenv("SCAN_LOCK_STALE_SECONDS", "180"))
