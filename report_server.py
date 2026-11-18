@@ -45,12 +45,21 @@ button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13
 <tr><th>Previous scan</th><td id="last">-</td></tr>
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
-<p><a id="report" href="/">Open latest report</a></p></section></main>
+<p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
 <script>
 const $=id=>document.getElementById(id);
-// resolve relative to the current page so a reverse proxy path prefix keeps working
-const base=new URL('.',location.href).href;
-const api=new URL('api/scan',base).href;
+// resolve relative to the current path so a reverse proxy path prefix keeps working
+function appDir(){
+  var p=location.pathname;
+  if(p.charAt(p.length-1)==='/')return p;
+  var last=p.slice(p.lastIndexOf('/')+1);
+  if(last===''||last==='progress'||last==='index.html')return p.slice(0,p.lastIndexOf('/')+1);
+  return p+'/';
+}
+const dir=appDir();
+const base=new URL(dir,location.href).href;
+const api=new URL(dir+'api/scan',location.href).href;
+document.querySelectorAll('a[data-rel]').forEach(function(a){a.href=new URL(dir+a.getAttribute('data-rel'),location.href).href;});
 const token=new URLSearchParams(location.search).get('token');
 const withToken=u=>token?u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(token):u;
 $('report').href=base;
@@ -107,7 +116,20 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
-<div class="meta">JSON schema: {{schema}} · <a href="/latest.json">latest.json</a> · <a href="/progress">scan progress</a></div>{{notice}}</section></main></body></html>"""
+<div class="meta">JSON schema: {{schema}} · <a data-rel="latest.json" href="latest.json">latest.json</a> · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
+<script>
+(function(){{
+function appDir(){{
+  var p=location.pathname;
+  if(p.charAt(p.length-1)==='/')return p;
+  var last=p.slice(p.lastIndexOf('/')+1);
+  if(last===''||last==='progress'||last==='index.html')return p.slice(0,p.lastIndexOf('/')+1);
+  return p+'/';
+}}
+  var dir=appDir();
+  document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
+}})();
+</script></body></html>"""
 
 
 class IndexStore:
@@ -250,6 +272,13 @@ def render_portal(rows, summary, query, state=None):
     return page
 
 
+def is_portal_path(path):
+    """The application root, with or without a reverse proxy path prefix."""
+    if path.endswith("/index.html"): return True
+    last = path.rstrip("/").split("/")[-1]
+    return last == "" or "." not in last
+
+
 def matches(path, candidate):
     """Match a route by suffix so a reverse proxy path prefix keeps working."""
     return path == candidate or path.endswith(candidate)
@@ -381,7 +410,7 @@ class ReportHandler(SimpleHTTPRequestHandler):
         if matches(parsed.path, PROGRESS_PATH):
             self._progress_page()
             return
-        if parsed.path in ("/", "/index.html"):
+        if is_portal_path(parsed.path):
             rows = INDEX.rows()
             status = CONTROL.status()
             summary = dict(summary_file() or status.get("last_summary") or {})

@@ -56,7 +56,8 @@ docker compose -f compose.yml logs -f
 
 The service works behind a reverse proxy, also when it is mounted under a path prefix such as `https://host/sbom/`:
 
-- The progress page resolves the API relative to its own URL (`new URL('api/scan', location.href)`), so it keeps working under any prefix.
+- The progress page resolves the API relative to its own URL, and every link in the report portal (`latest.json`, `progress`) is resolved at runtime from `location.pathname`, so they keep working under any prefix.
+- The application root is detected from the request path, so `/sbom/`, `/sbom` and `/sbom/index.html` all serve the portal.
 - API routes (`/api/scan`, `/api/scan/status`, `/progress`, `/healthz`) are matched by path suffix, and report files are looked up by suffix as well, so the proxy may either strip the prefix (`proxy_pass http://backend/`) or keep it.
 - The token cookie is issued with `Path=/`, so it is sent for every proxied path.
 
