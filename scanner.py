@@ -19,6 +19,7 @@ TIMEOUT = max(5, int(os.getenv("OSV_TIMEOUT_SECONDS", "30")))
 RETRIES = max(0, int(os.getenv("OSV_RETRIES", "2")))
 BUDGET = max(0, int(os.getenv("OSV_TIME_BUDGET_SECONDS", "900")))
 MAX_BYTES = max(1, int(os.getenv("MAX_TARBALL_MB", "2048"))) * 1024 * 1024
+PAGE_SIZE = max(20, int(os.getenv("REPORT_PAGE_SIZE", "100")))
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(),
                     format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("supply-chain")
@@ -305,7 +306,7 @@ def render_html(report, out):
         vulns = r.get("vulnerabilities", [])
         risk = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x:RANK.get(x,0), default="PENDING" if pending else "NONE")
         vuln_html = "<br>".join(f'<a target="_blank" rel="noopener" href="{esc((v.get("references") or ["https://osv.dev/vulnerability/"+v["id"]])[0])}">{esc(v["id"])}</a> ({esc(v["severity"])})' for v in vulns) or ('<span class="pending">PENDING</span>' if pending else "—")
-        dep = ", ".join(f"{k}@{v}" for k,v in list(r.get("dependencies",{}).items())[:10])
+        dep = ", ".join(f"{k}@{v}" for k,v in list(r.get("dependencies",{}).items())[:5])
         rows.append("<tr>" + "".join([
           f"<td>{esc(r['name'])}</td><td>{esc(r['version'])}</td>",
           f'<td><span class="risk {risk.lower()}">{risk}</span></td>',
@@ -334,7 +335,7 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
 .pending{{color:#8a5700;font-size:11px;font-weight:bold}}
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
-<section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>NONE</option></select></div>
+<section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>MEDIUM</option><option>LOW</option><option>NONE</option><option>PENDING</option></select><button id="prev" type="button">Prev</button><button id="next" type="button">Next</button><span id="pager" class="meta"></span></div>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>""")
         for row in rows:
             out.write(row)
@@ -342,7 +343,28 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
             out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
         out.write(f"""</tbody></table></div>
 <div class="meta">Duration: {s["duration_seconds"]}s · Oversized tarballs skipped: {s["tarballs_skipped_oversize"]} · JSON schema: {esc(report["schema"])}</div>{notice}</section></main>
-<script>const q=document.getElementById('q'),risk=document.getElementById('risk');function f(){{for(const r of document.querySelectorAll('#tbl tbody tr')){{r.hidden=!(r.innerText.toLowerCase().includes(q.value.toLowerCase())&&(!risk.value||r.cells[2].innerText.trim()===risk.value));}}}}q.addEventListener('input',f);risk.addEventListener('change',f);</script></body></html>""")
+<script>
+const q=document.getElementById('q'),risk=document.getElementById('risk'),pager=document.getElementById('pager');
+const rows=Array.prototype.slice.call(document.querySelectorAll('#tbl tbody tr'));
+const text=rows.map(function(r){{return r.textContent.toLowerCase();}});
+const sev=rows.map(function(r){{return r.cells[2]?r.cells[2].textContent.trim():'';}});
+const PER={PAGE_SIZE};let page=1;
+function apply(){{
+  const qv=q.value.trim().toLowerCase(),rv=risk.value,hits=[];
+  for(let i=0;i<rows.length;i++){{if((!qv||text[i].indexOf(qv)>=0)&&(!rv||sev[i]===rv))hits.push(i);}}
+  const pages=Math.max(1,Math.ceil(hits.length/PER));if(page>pages)page=pages;
+  for(let i=0;i<rows.length;i++)rows[i].style.display='none';
+  const from=(page-1)*PER,to=Math.min(from+PER,hits.length);
+  for(let k=from;k<to;k++)rows[hits[k]].style.display='';
+  pager.textContent='第 '+page+' / '+pages+' 页 · 命中 '+hits.length+' / '+rows.length+' 条';
+}}
+function debounce(fn,ms){{let t;return function(){{clearTimeout(t);t=setTimeout(fn,ms);}};}}
+q.addEventListener('input',debounce(function(){{page=1;apply();}},120));
+risk.addEventListener('change',function(){{page=1;apply();}});
+document.getElementById('prev').addEventListener('click',function(){{if(page>1){{page--;apply();}}}});
+document.getElementById('next').addEventListener('click',function(){{page++;apply();}});
+apply();
+</script></body></html>""")
 
 def write_report(report):
     OUT.mkdir(parents=True, exist_ok=True)

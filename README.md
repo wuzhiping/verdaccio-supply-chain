@@ -158,6 +158,7 @@ Priority is `5` when a CRITICAL finding exists, `4` for HIGH-only alerts, `3` fo
 - Records dependencies, optional/peer dependencies, and license metadata.
 - Queries OSV for each package/version using ecosystem `npm`.
 - Writes timestamped HTML/JSON plus `index.html` and `latest.json`.
+- The HTML table is client-side paginated (`REPORT_PAGE_SIZE`, 100 rows per page) and filters on cached text, so a report with thousands of package versions stays responsive in the browser.
 
 ## Configuration
 
