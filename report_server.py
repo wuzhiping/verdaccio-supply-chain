@@ -116,7 +116,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
-<div class="meta">JSON schema: {{schema}} · <a data-rel="latest.json" href="latest.json">latest.json</a> · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
+<div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
 <script>
 (function(){{
 function appDir(){{
@@ -267,7 +267,8 @@ def render_portal(rows, summary, query, state=None):
     for key, value in {
             "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks,
             "count": f"{len(hits)} matching of {len(packages)} package versions",
-            "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")), "notice": notice}.items():
+            "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
+            "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
     return page
 

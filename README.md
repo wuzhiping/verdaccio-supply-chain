@@ -138,7 +138,7 @@ How the portal stays usable with a huge report:
 - the portal pages through a compact **index file** (`reports/index.jsonl`, about 100 MB for 300k versions) that is loaded lazily, so a browser receives one page (about 20 KB) instead of a multi hundred megabyte HTML file and the portal keeps working after a restart,
 - the scan releases the package records once the report and the index are written, so the resident memory drops back after every scan,
 - search and severity filtering run on the server (`/?q=lodash&risk=CRITICAL&page=3`),
-- `latest.json` is a hard link to the newest archive, so the full report is stored once instead of twice,
+- `latest.json` is a hard link to the newest archive, so the full report is stored once instead of twice; it is not linked from the portal because it can be several hundred megabytes, but it stays reachable for scripted downloads,
 - the JSON report is written incrementally, the HTML rows are streamed and dependencies are kept compact in memory,
 - the peak RSS of every scan is logged (`peak_rss=…MB`).
 

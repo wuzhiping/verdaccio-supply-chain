@@ -426,6 +426,10 @@ def write_index(report):
     summary["schema"] = report.get("schema")
     summary["osv_error"] = report.get("osv", {}).get("error")
     summary["osv_enabled"] = report.get("osv", {}).get("enabled", True)
+    try:
+        summary["report_size"] = human_size((OUT / "latest.json").stat().st_size)
+    except OSError:
+        summary["report_size"] = "—"
     OUT.mkdir(parents=True, exist_ok=True)
     spath = OUT / "summary.json"
     stmp = spath.with_name(spath.name + ".tmp")
