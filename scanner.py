@@ -63,10 +63,14 @@ def add_packument(records, obj):
         })
 
 def read_manifest(tf):
-    candidates = [m for m in tf.getmembers() if m.isfile() and m.name.endswith("package/package.json")]
-    if not candidates: return None, "no package/package.json member"
+    members = [m for m in tf.getmembers()
+               if m.isfile() and m.name.endswith("package.json")
+               and not m.name.split("/")[0].startswith("node_modules")]
+    if not members: return None, "no package.json member"
+    # npm uses "package/package.json", @types and older packages use "<name>/package.json"
+    members.sort(key=lambda m: (m.name != "package/package.json", m.name.count("/"), len(m.name)))
     try:
-        stream = tf.extractfile(min(candidates, key=lambda m: len(m.name)))
+        stream = tf.extractfile(members[0])
         raw = stream.read(2 * 1024 * 1024 + 1) if stream else b""
     except Exception as e:
         return None, f"cannot read manifest: {type(e).__name__}: {e}"
