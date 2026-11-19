@@ -65,6 +65,7 @@ footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
 <p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 <script>
 const $=id=>document.getElementById(id);
 // resolve relative to the current path so a reverse proxy path prefix keeps working
@@ -152,6 +153,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">JSON export: {{exports}}</div></section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 
 <script>
 function appDir(){{
@@ -188,6 +190,7 @@ RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 
 <script>
 (function(){{
@@ -219,6 +222,7 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">{{exports}}</div></section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 
 <script>
 function appDir(){{
@@ -316,6 +320,7 @@ footer.foot b{color:#68758b;font-weight:600}
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Ecosystem</th><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
 <div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 
 <script>
 (function(){{

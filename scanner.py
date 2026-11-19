@@ -631,6 +631,7 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
 .notice{{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}}.meta{{color:#68758b;font-size:12px;margin-top:12px}}
 header{{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}}.headleft{{min-width:0}}
 .copy{{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border:1px solid rgba(255,255,255,.32);border-radius:20px;background:rgba(255,255,255,.12);color:#dbe7f7;font-size:12.5px;letter-spacing:.3px;white-space:nowrap}}.copy b{{color:#fff;font-weight:700;letter-spacing:.6px}}
+footer.foot{{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}}footer.foot b{{color:#68758b;font-weight:600}}
 .pending{{color:#8a5700;font-size:11px;font-weight:bold}}
 </style></head><body><header><div class="headleft"><h1>SBOM: Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></div><div class="copy">Copyright &copy; {datetime.now(timezone.utc).year} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
@@ -642,6 +643,7 @@ header{{display:flex;justify-content:space-between;align-items:center;gap:18px;f
             out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
         out.write(f"""</tbody></table></div>
 <div class="meta">Duration: {s["duration_seconds"]}s · Oversized tarballs skipped: {s["tarballs_skipped_oversize"]} · JSON schema: {esc(report["schema"])}</div>{notice}</section></main>
+<footer class="foot">Developed by <b>Ateam+</b></footer>
 <script>
 const q=document.getElementById('q'),risk=document.getElementById('risk'),pager=document.getElementById('pager');
 const rows=Array.prototype.slice.call(document.querySelectorAll('#tbl tbody tr'));
