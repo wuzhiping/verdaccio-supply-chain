@@ -12,9 +12,7 @@ services:
       SCAN_INTERVAL_HOURS: "24"
       SCAN_ON_START: "true"
       OSV_ENABLED: "true"
-      # Keep the trailing slash: the gateway redirects the bare path with 301 and
-      # the request is replayed as GET, which the OSV API rejects with 405.
-      OSV_API_URL: ${OSV_API_URL:-https://abc.feg.com.tw/v1/querybatch/}
+      OSV_API_URL: ${OSV_API_URL:-https://api.osv.dev/v1/querybatch}
       OSV_BATCH_SIZE: "1000"
       OSV_TIMEOUT_SECONDS: "15"
       OSV_RETRIES: "1"
