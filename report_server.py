@@ -969,8 +969,15 @@ def risk_route(path):
     idx = path.rfind(RISK_PATH)
     if idx < 0:
         return None
-    level = path[idx + len(RISK_PATH):].strip("/").upper()
-    return level if level in RISK_LEVELS else ""
+    rest = path[idx + len(RISK_PATH):].strip("/")
+    if not rest:
+        return ""
+    if rest.upper() in RISK_LEVELS:
+        return rest.upper()
+    if "." in rest:
+        # a file, e.g. risks/unknown.json, the report file is served
+        return None
+    return ""
 
 
 class ReportHandler(SimpleHTTPRequestHandler):

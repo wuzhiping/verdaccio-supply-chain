@@ -229,6 +229,10 @@ A gateway that only returns advisory IDs (no severity) makes every finding look 
 | `OSV_ENRICH_WORKERS` | `8` | Parallel detail requests |
 | `OSV_DETAIL_TIMEOUT_SECONDS` | `15` | Timeout for a detail request |
 
+Advisories that only carry a **CVSS v4** vector cannot be scored locally, the severity is then taken
+from the alias of the advisory (a `GHSA-…` entry usually carries the label), so they no longer stay
+`UNKNOWN`.
+
 If some advisories still have no severity, the report counts them as `severity_unresolved` and the notification says so instead of claiming that everything is fine. The notification cross checks the collected advisories against the summary counters: if the summary reports critical or high findings that could not be listed, it sends a risk alert instead of an all clear message.
 
 ## What is relevant to this registry

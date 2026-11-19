@@ -178,6 +178,44 @@ def fetch_web(vid):
         return parse_web(response.read(2 * 1024 * 1024).decode("utf-8", "ignore"))
 
 
+def detail_data(record):
+    """Severity, score, summary and url of one advisory record."""
+    data = {"severity": severity_from_api(record)}
+    score = None
+    for item in (record.get("severity") or []):
+        try:
+            score = float(item.get("score"))
+            break
+        except (TypeError, ValueError):
+            base = cvss_base_score(str(item.get("score", "")))
+            if base is not None:
+                score = base
+                break
+    if score is not None:
+        data["score"] = score
+    if record.get("summary"):
+        data["summary"] = record["summary"][:500]
+    if record.get("references"):
+        data["url"] = record["references"][0].get("url")
+    return data
+
+
+def lookup_aliases(record):
+    """Severity of an alias, some advisories only carry a cvss v4 vector."""
+    aliases = [a for a in (record.get("aliases") or []) if isinstance(a, str)]
+    aliases.sort(key=lambda a: (not a.startswith("GHSA-"), a))
+    for alias in aliases[:3]:
+        try:
+            other = fetch_detail(alias)
+        except Exception:
+            continue
+        data = detail_data(other)
+        if data.get("severity") and data["severity"] != "UNKNOWN":
+            data["alias"] = alias
+            return data
+    return {}
+
+
 def lookup(vid):
     """Resolve one advisory id to severity, score and summary."""
     cache = _cache()
@@ -187,23 +225,15 @@ def lookup(vid):
     cache = _cache()
     try:
         record = fetch_detail(vid)
-        data = {"severity": severity_from_api(record)}
-        score = None
-        for item in (record.get("severity") or []):
-            try:
-                score = float(item.get("score"))
-                break
-            except (TypeError, ValueError):
-                base = cvss_base_score(str(item.get("score", "")))
-                if base is not None:
-                    score = base
-                    break
-        if score is not None:
-            data["score"] = score
-        if record.get("summary"):
-            data["summary"] = record["summary"][:500]
-        if record.get("references"):
-            data["url"] = record["references"][0].get("url")
+        data = detail_data(record)
+        if not data.get("severity") or data["severity"] == "UNKNOWN":
+            # a cvss v4 vector or a missing label, the alias usually has the label
+            alias = lookup_aliases(record)
+            if alias:
+                data["severity"] = alias["severity"]
+                if not data.get("score") and alias.get("score") is not None:
+                    data["score"] = alias["score"]
+                data["severity_from"] = alias.get("alias", "")
         if cache:
             cache.set_advisory(vid, data)
         return data
