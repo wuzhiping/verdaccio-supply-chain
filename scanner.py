@@ -629,6 +629,7 @@ main{{max-width:1450px;margin:22px auto;padding:0 18px}}.cards{{display:grid;gri
 code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}}
 .critical,.high{{background:#ffe3e3;color:#a51d2d}}.medium{{background:#fff0d4;color:#8a5700}}.low{{background:#e3f4e8;color:#176b37}}
 .notice{{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}}.meta{{color:#68758b;font-size:12px;margin-top:12px}}
+footer.foot{{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}}footer.foot b{{color:#68758b;font-weight:600}}
 .pending{{color:#8a5700;font-size:11px;font-weight:bold}}
 </style></head><body><header><h1>SBOM: Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
@@ -640,6 +641,7 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
             out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
         out.write(f"""</tbody></table></div>
 <div class="meta">Duration: {s["duration_seconds"]}s · Oversized tarballs skipped: {s["tarballs_skipped_oversize"]} · JSON schema: {esc(report["schema"])}</div>{notice}</section></main>
+<footer class="foot">Copyright &copy; {datetime.now(timezone.utc).year} <b>AIFE in FEIT</b></footer>
 <script>
 const q=document.getElementById('q'),risk=document.getElementById('risk'),pager=document.getElementById('pager');
 const rows=Array.prototype.slice.call(document.querySelectorAll('#tbl tbody tr'));

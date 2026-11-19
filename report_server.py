@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only HTTP publisher for the generated reports; Python standard library only."""
 import os, re, hmac, json, logging, threading
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urlencode, quote, unquote
@@ -24,6 +25,7 @@ RISK_PATH = "/risk"
 REVIEWED_PATH = "/reviewed"
 REVIEW_API_KEY = os.getenv("REVIEW_API_KEY", "123456").strip()
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
+YEAR = datetime.now(timezone.utc).year
 REVIEWS = review_store.ReviewStore(str(ROOT / "risks"))
 PAGE_SIZE = max(20, int(os.getenv("REPORT_PAGE_SIZE", "100")))
 RETRY_AFTER = os.getenv("SCAN_RETRY_AFTER_SECONDS", "10")
@@ -47,6 +49,7 @@ table{border-collapse:collapse;width:100%}td,th{padding:7px 4px;border-bottom:1p
 th{width:150px;color:#526078;font-weight:600}.mono{font-family:ui-monospace,monospace;font-size:12px}
 button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff;font-size:14px;cursor:pointer}
 button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
+footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}footer.foot b{color:#68758b;font-weight:600}
 </style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
 <table><tr><th>Current scan</th><td id="cur">-</td></tr>
@@ -59,6 +62,7 @@ button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
 <p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
+<footer class="foot">Copyright &copy; 2026 <b>AIFE in FEIT</b></footer>
 <script>
 const $=id=>document.getElementById(id);
 // resolve relative to the current path so a reverse proxy path prefix keeps working
@@ -143,6 +147,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">JSON export: {{exports}}</div></section></main>
+<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
 <script>
 function appDir(){{
   var p=location.pathname;
@@ -178,6 +183,7 @@ RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
+<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
 <script>
 (function(){{
 function appDir(){{
@@ -208,6 +214,7 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">{{exports}}</div></section></main>
+<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
 <script>
 function appDir(){{
   var p=location.pathname;
@@ -268,6 +275,8 @@ button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#f
 code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}
 .critical,.high{background:#ffe3e3;color:#a51d2d}.medium{background:#fff0d4;color:#8a5700}.low{background:#e3f4e8;color:#176b37}
 .notice{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}.meta{color:#68758b;font-size:12px;margin-top:12px}
+footer.foot{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px;letter-spacing:.2px}
+footer.foot b{color:#68758b;font-weight:600}
 .dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:16px}
 .dashpanel h2{font-size:12px;margin:0 0 14px;color:#526078;text-transform:uppercase;letter-spacing:.8px;font-weight:700}
 .stackbar{display:flex;height:20px;border-radius:10px;overflow:hidden;background:#eef1f6;box-shadow:inset 0 0 0 1px rgba(20,40,70,.05)}
@@ -299,6 +308,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Ecosystem</th><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
 <div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
+<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
 <script>
 (function(){{
 function appDir(){{
@@ -508,6 +518,7 @@ def render_portal(rows, summary, query, state=None):
             "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
             "count": count_text,
             "rows": body, "pager": pager, "reviewed_total": str(reviewed_total),
+            "year": str(YEAR),
             "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
@@ -634,7 +645,7 @@ def render_risk_index():
     html = RISK_INDEX_HEAD
     for key, value in {"subtitle": "Findings per severity level · cached or newest versions only · "
                                    "reviewed findings are not counted",
-                       "cards": cards, "links": "", "exports": exports}.items():
+                       "cards": cards, "links": "", "exports": exports, "year": str(YEAR)}.items():
         html = html.replace("{{" + key + "}}", value)
     return finish_page(html, "risk index")
 
@@ -715,7 +726,7 @@ def render_reviewed_page(query):
             "subtitle": f"{len(findings)} reviewed findings · untick a row to put it back into the risk",
             "cards": cards, "rows": "\n".join(body) or '<tr><td colspan="8">Nothing is reviewed yet.</td></tr>',
             "pager": "", "nav": nav, "exports": exports,
-            "level": level, "level_label": level or "all levels",
+            "level": level, "level_label": level or "all levels", "year": str(YEAR),
             "other_level": "" if level else "CRITICAL"}.items():
         html = html.replace("{{" + key + "}}", value)
     return finish_page(html, "reviewed page")
@@ -777,6 +788,7 @@ def render_risk_page(level, query):
     html = RISK_HEAD
     for key, value in {
             "level": level, "level_class": level.lower(), "title": f"Risks · {level}",
+            "year": str(YEAR),
             "subtitle": f"{len(findings)} findings at {level} · cached or newest versions only · "
                         f"reviewed findings leave the statistics and the alerts",
             "rows": "\n".join(body) or '<tr><td colspan="8">No findings.</td></tr>',
