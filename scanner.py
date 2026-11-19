@@ -12,10 +12,19 @@ from scan_control import CONTROL, LOCK
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
-INTERVAL = max(1, int(os.getenv("SCAN_INTERVAL_HOURS", "24")))
-OSV = os.getenv("OSV_ENABLED", "true").lower() not in ("0", "false", "no")
 ECOSYSTEM = os.getenv("SCAN_ECOSYSTEM", "npm").strip() or "npm"
 PYPI = ECOSYSTEM.lower() in ("pypi", "python", "pip")
+# SCAN_ROOTS accepts several roots as "path[:ecosystem], path[:ecosystem]"
+ROOT_SPECS = []
+for spec in os.getenv("SCAN_ROOTS", f"{ROOT}:{ECOSYSTEM}").split(","):
+    spec = spec.strip()
+    if not spec: continue
+    path, _, eco = spec.partition(":")
+    ROOT_SPECS.append((path, eco or "npm"))
+REGISTRY_URL = {"npm": os.getenv("NPM_REGISTRY_URL", "").strip(),
+                "PyPI": os.getenv("PYPI_REGISTRY_URL", "").strip()}
+INTERVAL = max(1, int(os.getenv("SCAN_INTERVAL_HOURS", "24")))
+OSV = os.getenv("OSV_ENABLED", "true").lower() not in ("0", "false", "no")
 OSV_URL = os.getenv("OSV_API_URL", "https://api.osv.dev/v1/querybatch")
 BATCH = max(1, min(1000, int(os.getenv("OSV_BATCH_SIZE", "100"))))
 TIMEOUT = max(5, int(os.getenv("OSV_TIMEOUT_SECONDS", "30")))
@@ -169,25 +178,25 @@ def sha256(path):
         for chunk in iter(lambda: f.read(1024 * 1024), b""): h.update(chunk)
     return h.hexdigest()
 
-def discover_pypi():
+def discover_pypi(root, ecosystem="PyPI"):
     """Discover Python distributions from a Nexus or PyPI style storage layout."""
     import pypi_scan
     records = {}
     files = []
-    for p in ROOT.rglob("*"):
+    for p in root.rglob("*"):
         try:
             if p.is_file() and p.name.lower().endswith(pypi_scan.DIST_SUFFIXES):
                 files.append(p)
         except OSError:
             continue
-    progress("discovering", 0, len(files), "reading python distributions")
+    progress("discovering", 0, len(files), f"reading python distributions ({ecosystem})")
     for i, p in enumerate(files, 1):
         try:
             parsed = pypi_scan.parse_filename(p.name)
             if not parsed:
                 continue
             name, version = parsed
-            parts = p.relative_to(ROOT).parts
+            parts = p.relative_to(root).parts
             # Nexus layout: packages/<name>/<version>/<file>
             if len(parts) >= 2 and parts[-2] == version:
                 name = parts[-3] if len(parts) >= 3 else name
@@ -202,10 +211,12 @@ def discover_pypi():
                 rec["dependencies"] = ",".join(meta["requires"])
                 if meta["summary"]:
                     rec.setdefault("description", meta["summary"])
-            rec["tarball_path"] = str(p.relative_to(ROOT))
+            rec["tarball_path"] = str(p.relative_to(root))
             rec["tarball_size"] = p.stat().st_size
             rec["sha256"] = sha256(p)
             rec["tarball_file"] = p.name
+            rec["ecosystem"] = ecosystem
+            rec["registry"] = REGISTRY_URL.get(ecosystem, "")
             rec.setdefault("license", "UNKNOWN")
             rec["source"] = "metadata"
         except OSError as e:
@@ -215,19 +226,46 @@ def discover_pypi():
     return records, len(records), 0
 
 def discover():
-    if PYPI:
-        return discover_pypi()
+    """Discover every configured registry root and merge the results."""
+    if len(ROOT_SPECS) > 1 or ROOT_SPECS[0][1].lower() in ("pypi", "python", "pip"):
+        return discover_all()
+    root, ecosystem = ROOT_SPECS[0]
+    if ecosystem.lower() in ("pypi", "python", "pip"):
+        return discover_pypi(Path(root), ecosystem)
+    return discover_npm(Path(root), ecosystem)
+
+
+def discover_all():
     records = {}
-    json_files = list(ROOT.rglob("*.json"))
-    progress("discovering", 0, len(json_files), "reading package metadata")
+    tarballs = skipped = 0
+    for path, ecosystem in ROOT_SPECS:
+        root = Path(path)
+        if not root.is_dir():
+            log.warning("Scan root is not a directory, skipped: %s", path)
+            continue
+        log.info("Scanning %s (%s)", path, ecosystem)
+        if ecosystem.lower() in ("pypi", "python", "pip"):
+            found, count, skip = discover_pypi(root, ecosystem)
+        else:
+            found, count, skip = discover_npm(root, ecosystem)
+        records.update(found)
+        tarballs += count
+        skipped += skip
+    return records, tarballs, skipped
+
+
+def discover_npm(root, ecosystem="npm"):
+    records = {}
+    json_files = list(root.rglob("*.json"))
+    progress("discovering", 0, len(json_files), f"reading package metadata ({ecosystem})")
     for i, p in enumerate(json_files, 1):
         add_packument(records, read_json(p))
         if i % 250 == 0:
-            progress("discovering", i, len(json_files), f"{len(records)} package versions")
-    for p in ROOT.rglob(".verdaccio-db.json"):
+            progress("discovering", i, len(json_files), f"{len(records)} package versions ({ecosystem})")
+    for p in root.rglob(".verdaccio-db.json"):
         add_packument(records, read_json(p))
     tarballs = skipped = 0
-    tgz_files = list(ROOT.rglob("*.tgz"))
+    tgz_files = list(root.rglob("*.tgz"))
     for i, p in enumerate(tgz_files, 1):
         try:
             if p.stat().st_size > MAX_BYTES:
@@ -255,10 +293,12 @@ def discover():
                     rec.setdefault(field, deps(manifest.get(field)))
             else:
                 rec["tarball_manifest_error"] = reason
-            rec["tarball_path"] = str(p.relative_to(ROOT))
+            rec["tarball_path"] = str(p.relative_to(root))
             rec["tarball_size"] = p.stat().st_size
             rec["sha256"] = sha256(p)
             rec["tarball_file"] = p.name
+            rec["ecosystem"] = ecosystem
+            rec["registry"] = REGISTRY_URL.get(ecosystem, "")
             tarballs += 1
         except OSError as e:
             log.warning("Cannot scan %s: %s", p, e)
@@ -278,7 +318,8 @@ def severity(v):
     return s.upper() if isinstance(s, str) and s.upper() in RANK else "UNKNOWN"
 
 def query_osv(batch):
-    payload = {"queries": [{"package": {"name": r["name"], "ecosystem": ECOSYSTEM}, "version": r["version"]} for r in batch]}
+    ecosystem = batch[0].get("ecosystem", ECOSYSTEM) if batch else ECOSYSTEM
+    payload = {"queries": [{"package": {"name": r["name"], "ecosystem": ecosystem}, "version": r["version"]} for r in batch]}
     req = urllib.request.Request(OSV_URL, data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "User-Agent": "verdaccio-supply-chain/1.0"}, method="POST")
     error = None
@@ -296,39 +337,49 @@ def query_osv(batch):
 
 def scan_vulnerabilities(records):
     if not OSV: return 0, "OSV disabled"
-    items = list(records.values())
+    grouped = {}
+    for rec in records.values():
+        grouped.setdefault(rec.get("ecosystem", ECOSYSTEM), []).append(rec)
+    items = [rec for group in grouped.values() for rec in group]
     total, errors = 0, []
     started = time.monotonic()
     deadline = started + BUDGET if BUDGET else None
-    for i in range(0, len(items), BATCH):
-        if deadline and time.monotonic() > deadline:
-            remaining = items[i:]
-            for rec in remaining:
-                rec["vulnerabilities"] = []
-                rec["vulnerability_scan_error"] = "not queried, OSV time budget exhausted"
-            errors.append(f"time budget of {BUDGET}s exhausted, {len(remaining)} package versions not queried")
-            log.warning("OSV time budget exhausted, %s package versions not queried", len(remaining))
-            break
-        group = items[i:i+BATCH]
-        try:
-            results = query_osv(group)
-            for rec, vulns in zip(group, results):
-                rec["vulnerabilities"] = [{
-                    "id": v.get("id", "UNKNOWN"), "summary": (v.get("summary") or v.get("details") or "")[:500],
-                    "severity": severity(v), "aliases": v.get("aliases", []),
-                    "published": v.get("published"), "modified": v.get("modified"),
-                    "references": [x.get("url") for x in v.get("references", []) if x.get("url")][:5]
-                } for v in vulns]
-                total += len(vulns)
-        except Exception as e:
-            msg = f"batch {i//BATCH+1}: {e}"
-            errors.append(msg)
-            for rec in group:
-                rec["vulnerabilities"] = []
-                rec["vulnerability_scan_error"] = str(e)
-            log.exception("OSV batch failed")
-        progress("osv", i + len(group), len(items),
-                 f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
+    i = 0
+    aborted = False
+    for eco, eco_items in grouped.items():
+        if aborted: break
+        for j in range(0, len(eco_items), BATCH):
+            if deadline and time.monotonic() > deadline:
+                remaining = [r for g in grouped.values() for r in g][i:]
+                for rec in remaining:
+                    rec["vulnerabilities"] = []
+                    rec["vulnerability_scan_error"] = "not queried, OSV time budget exhausted"
+                errors.append(f"time budget of {BUDGET}s exhausted, {len(remaining)} package versions not queried")
+                log.warning("OSV time budget exhausted, %s package versions not queried", len(remaining))
+                i = len(items)
+                aborted = True
+                break
+            group = eco_items[j:j+BATCH]
+            i += len(group)
+            try:
+                results = query_osv(group)
+                for rec, vulns in zip(group, results):
+                    rec["vulnerabilities"] = [{
+                        "id": v.get("id", "UNKNOWN"), "summary": (v.get("summary") or v.get("details") or "")[:500],
+                        "severity": severity(v), "aliases": v.get("aliases", []),
+                        "published": v.get("published"), "modified": v.get("modified"),
+                        "references": [x.get("url") for x in v.get("references", []) if x.get("url")][:5]
+                    } for v in vulns]
+                    total += len(vulns)
+            except Exception as e:
+                msg = f"batch {i//BATCH+1} ({eco}): {e}"
+                errors.append(msg)
+                for rec in group:
+                    rec["vulnerabilities"] = []
+                    rec["vulnerability_scan_error"] = str(e)
+                log.exception("OSV batch failed")
+            progress("osv", i, len(items),
+                     f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
     unresolved = [v for rec in items for v in rec.get("vulnerabilities", []) if v.get("severity") == "UNKNOWN"]
     if unresolved:
         log.info("Resolving severity for %s advisories without severity data", len(unresolved))
@@ -341,17 +392,19 @@ def scan_vulnerabilities(records):
 def summarize(report):
     """Recompute the summary counters from the package list."""
     sev, licenses, names = Counter(), Counter(), set()
+    ecosystems = Counter()
     edges = vulnerable = 0
     for r in report["packages"]:
         names.add(r["name"])
         licenses[r.get("license", "UNKNOWN")] += 1
         edges += sum(dep_count(r.get(k, "")) for k in ("dependencies", "optionalDependencies", "peerDependencies"))
         if r.get("vulnerabilities"): vulnerable += 1
+        ecosystems[r.get("ecosystem", ECOSYSTEM)] += 1
         for v in r.get("vulnerabilities", []): sev[v.get("severity", "UNKNOWN")] += 1
     report["summary"].update({
         "unique_packages": len(names), "package_versions": len(report["packages"]),
         "versions_with_vulnerabilities": vulnerable, "vulnerability_findings": sum(sev.values()),
-        "severity_unresolved": sev["UNKNOWN"],
+        "severity_unresolved": sev["UNKNOWN"], "ecosystems": dict(ecosystems),
         "dependency_edges": edges, "severity": {k: sev[k] for k in RANK},
         "licenses": dict(licenses.most_common())})
 
@@ -534,6 +587,7 @@ def write_index(report):
             fh.write(json.dumps({"n": name, "v": r.get("version", ""), "r": level,
                                  "l": r.get("license", "UNKNOWN"), "t": r.get("tarball_file", ""),
                                  "h": r.get("sha256", ""), "d": r.get("dependencies", ""),
+                                 "e": r.get("ecosystem", ECOSYSTEM),
                                  "c": cached, "n2": latest, "x": links}, ensure_ascii=False) + "\n")
     tmp.replace(path)
     log.info("Index written: %s (%s)", path, human_size(path.stat().st_size))
@@ -580,7 +634,9 @@ def run():
     CONTROL.begin()
     started = time.monotonic()
     try:
-        if not ROOT.is_dir(): raise FileNotFoundError(f"SCAN_ROOT is not a directory: {ROOT}")
+        for path, _eco in ROOT_SPECS:
+            if not Path(path).is_dir():
+                raise FileNotFoundError(f"Scan root is not a directory: {path}")
         progress("scanning", 0, 0, "scanning storage")
         records, tarballs, skipped = discover()
         r = build_report(records, tarballs, skipped)

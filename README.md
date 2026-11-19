@@ -143,6 +143,29 @@ How the portal stays usable with a huge report:
 - the JSON report is written incrementally, the HTML rows are streamed and dependencies are kept compact in memory,
 - the peak RSS of every scan is logged (`peak_rss=…MB`).
 
+## Merging several registries
+
+One scanner instance can cover several registries and produce a single merged report. `SCAN_ROOTS` takes a comma separated list of `path[:ecosystem]` entries, the ecosystem decides how the storage is read and which OSV ecosystem is queried:
+
+```yaml
+    environment:
+      SCAN_ROOTS: "/verdaccio-data:npm, /pypi-data:PyPI"
+      NPM_REGISTRY_URL: "https://npm.feg.cn/"
+      PYPI_REGISTRY_URL: "http://10.17.1.201:24873/repository/pypi-group"
+    volumes:
+      - /opt/verdaccio/storage/data:/verdaccio-data:ro
+      - /nexus-data/repository/pypi-group/packages:/pypi-data:ro
+      - ./reports:/reports
+```
+
+- every package version carries its `ecosystem` and the `registry` it came from,
+- the OSV lookup is grouped per ecosystem, `npm` and `PyPI` records are never mixed in one request,
+- the portal shows an `Ecosystem` column and an ecosystem filter (`/?eco=PyPI`),
+- the summary contains the version count per ecosystem,
+- the ntfy alert covers both ecosystems in one message.
+
+`SCAN_ROOT` and `SCAN_ECOSYSTEM` still work for a single registry, `SCAN_ROOTS` simply overrides them.
+
 ## PyPI repositories
 
 The scanner also works on Python distributions. Set `SCAN_ECOSYSTEM=PyPI` and point `SCAN_ROOT` at the blob store of a Nexus pypi repository (or any PyPI cache):
@@ -165,7 +188,7 @@ The scanner also works on Python distributions. Set `SCAN_ECOSYSTEM=PyPI` and po
 ```
 
 ```bash
-docker compose -f compose.yml --profile pypi up -d --build
+docker compose -f compose.yml up -d --build
 ```
 
 - the Nexus layout `packages/<name>/<version>/<file>` is understood, the file name is parsed as well (PEP 427 wheel, PEP 625 sdist),

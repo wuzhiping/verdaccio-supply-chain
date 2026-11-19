@@ -112,9 +112,9 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 </style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="">
-<input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="scope">{{scopes}}</select><select name="risk">{{risks}}</select>
+<input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="scope">{{scopes}}</select><select name="eco">{{ecos}}</select><select name="risk">{{risks}}</select>
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
-<div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
+<div class="tablewrap"><table id="tbl"><thead><tr><th>Ecosystem</th><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
 <div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
 <script>
@@ -168,9 +168,11 @@ class IndexStore:
                     ids = " ".join(str(x.get("i", "")) for x in links)
                     haystack = (name + " " + version + " " + sha + " " + tarball + " " + lic + " " + ids).lower()
                     cached = bool(d.get("c")); latest = bool(d.get("n2"))
+                    ecosystem = str(d.get("e", "npm"))
                     if "c" in d or "n2" in d:
                         scoped = True
-                    rows.append((name, version, level, lic, tarball, sha, deps, links, haystack, cached, latest))
+                    rows.append((name, version, level, lic, tarball, sha, deps, links, haystack,
+                                 cached, latest, ecosystem))
         except OSError as e:
             log.warning("Cannot read index: %s", e)
             return self._rows
@@ -215,6 +217,7 @@ def render_portal(rows, summary, query, state=None):
     q = (query.get("q") or [""])[0].strip().lower()
     risk = (query.get("risk") or [""])[0].strip()
     scope = (query.get("scope") or ["relevant"])[0].strip() or "relevant"
+    eco_filter = (query.get("eco") or [""])[0].strip()
     try:
         page = max(1, int((query.get("page") or ["1"])[0]))
     except ValueError:
@@ -231,6 +234,8 @@ def render_portal(rows, summary, query, state=None):
         return cached or latest
 
     def matches_row(r):
+        if eco_filter and r[11] != eco_filter:
+            return False
         if not in_scope(r):
             return False
         if risk and r[2] != risk:
@@ -243,13 +248,13 @@ def render_portal(rows, summary, query, state=None):
     chunk = hits[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
 
     html_rows = []
-    for name, version, level, license_, tarball, sha, deps, links, _hay, _cached, _latest in chunk:
+    for name, version, level, license_, tarball, sha, deps, links, _hay, _cached, _latest, eco in chunk:
         vuln_html = "<br>".join(
             f'<a target="_blank" rel="noopener" href="{esc(x.get("u", ""))}">{esc(x.get("i", ""))}</a> ({esc(x.get("s", ""))})'
             for x in links) or "—"
         dep = ", ".join(deps.split(",")[:5]) if deps else ""
         html_rows.append("<tr>" + "".join([
-            f"<td>{esc(name)}</td><td>{esc(version)}</td>",
+            f"<td>{esc(eco)}</td><td>{esc(name)}</td><td>{esc(version)}</td>",
             f'<td><span class="risk {level.lower()}">{level}</span></td>',
             f"<td>{esc(license_)}</td><td>{esc(tarball or 'not found')}</td>",
             f"<td><code>{esc(sha or 'not calculated')}</code></td><td>{esc(dep)}</td><td>{vuln_html}</td>"
@@ -268,6 +273,9 @@ def render_portal(rows, summary, query, state=None):
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
                     for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING", "UNKNOWN"))
+    ecosystems = sorted({r[11] for r in packages})
+    ecos = "".join(f'<option value="{esc(v)}"{" selected" if v == eco_filter else ""}>{esc(v or "All ecosystems")}</option>'
+                    for v in [""] + ecosystems)
     scope_labels = {"relevant": "Registry relevant (cached or latest)", "all": "All versions",
                     "cached": "Cached tarballs only", "latest": "Latest version only"}
     scopes = "".join(f'<option value="{esc(k)}"{" selected" if k == scope else ""}>{esc(v)}</option>'
@@ -276,7 +284,8 @@ def render_portal(rows, summary, query, state=None):
         scopes = '<option value="all">All versions (index without scope flags)</option>' 
 
     def link(target):
-        return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"scope={quote(scope)}", f"page={target}"])
+        return "?" + "&amp;".join([f"q={quote(q)}", f"risk={quote(risk)}", f"scope={quote(scope)}",
+                                   f"eco={quote(eco_filter)}", f"page={target}"])
 
     pager = ""
     if pages > 1:
@@ -294,7 +303,7 @@ def render_portal(rows, summary, query, state=None):
                 f'OSV {"enabled" if summary.get("osv_enabled", True) else "disabled"}')
     page = PORTAL_HEAD
     for key, value in {
-            "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks, "scopes": scopes,
+            "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
             "count": count_text,
             "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
