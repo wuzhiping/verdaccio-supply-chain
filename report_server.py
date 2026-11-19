@@ -373,7 +373,7 @@ footer.foot .refresh label{color:#68758b}
 .card.kpi:before{content:"";position:absolute;left:0;top:0;width:100%;height:3px;border-radius:11px 11px 0 0;background:#315fbd;opacity:.9}
 .card.kpi.c1{border-top-color:#3f7fd0}.card.kpi.c2{border-top-color:#5cb87c}.card.kpi.c3{border-top-color:#f0a04b}
 .card.kpi.c4{border-top-color:#d9534f}.card.kpi.c5{border-top-color:#8b5cf6}.card.kpi.c6{border-top-color:#00a2b8}
-.card.kpi .klabel{display:block;color:#68758b;font-size:12px}
+.card.kpi .klabel{display:block;color:#68758b;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.2em}
 .card.kpi .kvalue{display:block;font-size:28px;font-weight:700;margin-top:6px;color:#16233c}
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
 @media (max-width:900px){.dash{grid-template-columns:1fr}.cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
@@ -583,14 +583,15 @@ def render_portal(rows, summary, query, state=None):
     count_text = f"{len(hits)} matching of {scoped_total} in scope"
     if scoped_total != len(packages):
         count_text += f" / {len(packages)} total"
-    cards = [("Unique packages", summary.get("unique_packages", 0)), ("Package versions", summary.get("package_versions", 0)),
-             ("Tarballs hashed", summary.get("tarballs_scanned", 0)),
-             ("Vulnerable versions", summary.get("versions_with_vulnerabilities", 0)),
-             ("Vulnerability findings", summary.get("vulnerability_findings", 0)),
-             ("Dependency edges", summary.get("dependency_edges", 0))]
-    card_html = "".join(f'<div class="card kpi c{i}"><span class="klabel">{esc(k)}</span>'
+    cards = [("Packages", "Unique packages", summary.get("unique_packages", 0)),
+             ("Versions", "Package versions", summary.get("package_versions", 0)),
+             ("Tarballs", "Tarballs hashed", summary.get("tarballs_scanned", 0)),
+             ("Vulnerable", "Versions with a vulnerability", summary.get("versions_with_vulnerabilities", 0)),
+             ("Findings", "Vulnerability findings", summary.get("vulnerability_findings", 0)),
+             ("Dependencies", "Dependency edges", summary.get("dependency_edges", 0))]
+    card_html = "".join(f'<div class="card kpi c{i}" title="{esc(full)}"><span class="klabel">{esc(k)}</span>'
                         f'<span class="kvalue">{esc(v)}</span></div>'
-                        for i, (k, v) in enumerate(cards, 1))
+                        for i, (k, full, v) in enumerate(cards, 1))
     severity = risk_counts(rows, REVIEWS.keys())
     if not severity:
         severity = summary.get("severity") or {}
