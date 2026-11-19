@@ -39,7 +39,10 @@ PROGRESS_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 ::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
-header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px 20px;box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:14px 20px;box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.headleft{min-width:0}
+.copy{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border:1px solid rgba(255,255,255,.32);border-radius:20px;background:rgba(255,255,255,.12);color:#dbe7f7;font-size:12.5px;letter-spacing:.3px;white-space:nowrap}
+.copy b{color:#fff;font-weight:700;letter-spacing:.6px}
 header h1{margin:0;font-size:21px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:920px;margin:22px auto;padding:0 18px}
 .card{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
@@ -50,7 +53,7 @@ th{width:150px;color:#526078;font-weight:600}.mono{font-family:ui-monospace,mono
 button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff;font-size:14px;cursor:pointer}
 button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
 footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}footer.foot b{color:#68758b;font-weight:600}
-</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></div><div class="copy">Copyright &copy; 2026 <b>AIFE in FEIT</b></div></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
 <table><tr><th>Current scan</th><td id="cur">-</td></tr>
 <tr><th>Phase</th><td id="phase">-</td></tr>
@@ -62,7 +65,6 @@ footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
 <p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
-<footer class="foot">Copyright &copy; 2026 <b>AIFE in FEIT</b></footer>
 <script>
 const $=id=>document.getElementById(id);
 // resolve relative to the current path so a reverse proxy path prefix keeps working
@@ -122,7 +124,10 @@ RISK_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta 
 ::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
-header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:14px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.headleft{min-width:0}
+.copy{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border:1px solid rgba(255,255,255,.32);border-radius:20px;background:rgba(255,255,255,.12);color:#dbe7f7;font-size:12.5px;letter-spacing:.3px;white-space:nowrap}
+.copy b{color:#fff;font-weight:700;letter-spacing:.6px}
 header h1{margin:0;font-size:22px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
 .toolbar{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;align-items:center}
@@ -137,7 +142,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 .critical,.high{background:#fdeaea;color:#8d1b2c}.medium{background:#fff7df;color:#7a5600}.low{background:#e9f7ee;color:#14653a}.unknown{background:#eef1f6;color:#4a566b}
 .reviewed{opacity:.45}.reviewed td:nth-child(2){text-decoration:line-through}
 .checkbox{width:17px;height:17px}.links a{margin-right:12px}
-</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag {{level_class}}">{{level}}</span></h1><p>{{subtitle}}</p></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag {{level_class}}">{{level}}</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="panel"><div class="toolbar">
 <input id="key" type="password" placeholder="API key for review (saved in this browser)">
 <button id="savekey" type="button">Save key</button>
@@ -147,7 +152,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">JSON export: {{exports}}</div></section></main>
-<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
+
 <script>
 function appDir(){{
   var p=location.pathname;
@@ -179,11 +184,11 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){
 
 RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security · risks</title><style>__STYLE__</style></head>
-<body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
+<body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
-<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
+
 <script>
 (function(){{
 function appDir(){{
@@ -203,7 +208,7 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <title>SBOM: Supply Chain Security · reviewed</title><style>__STYLE__
 .reviewed td:nth-child(2){text-decoration:line-through}
 </style></head>
-<body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag unknown">reviewed</span></h1><p>{{subtitle}}</p></header>
+<body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag unknown">reviewed</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><div class="toolbar">
 <input id="key" type="password" placeholder="API key for review (saved in this browser)">
@@ -214,7 +219,7 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">{{exports}}</div></section></main>
-<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
+
 <script>
 function appDir(){{
   var p=location.pathname;
@@ -253,7 +258,10 @@ PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><met
 ::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
-header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:white;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:white;padding:14px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.headleft{min-width:0}
+.copy{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border:1px solid rgba(255,255,255,.32);border-radius:20px;background:rgba(255,255,255,.12);color:#dbe7f7;font-size:12.5px;letter-spacing:.3px;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.copy b{color:#fff;font-weight:700;letter-spacing:.6px}
 header h1{margin:0;font-size:23px;letter-spacing:.3px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
 .card.link{text-decoration:none;color:inherit}.card.link:hover{border-color:#315fbd;background:#f7faff}
@@ -296,7 +304,7 @@ footer.foot b{color:#68758b;font-weight:600}
 .card.kpi .klabel{display:block;color:#68758b;font-size:12px}
 .card.kpi .kvalue{display:block;font-size:28px;font-weight:700;margin-top:6px;color:#16233c}
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
-</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards kpis">{{cards}}</section>
 {{dashboard}}
 <section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
@@ -308,7 +316,7 @@ footer.foot b{color:#68758b;font-weight:600}
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Ecosystem</th><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
 <div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
-<footer class="foot">Copyright &copy; {{year}} <b>AIFE in FEIT</b></footer>
+
 <script>
 (function(){{
 function appDir(){{

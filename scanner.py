@@ -629,9 +629,10 @@ main{{max-width:1450px;margin:22px auto;padding:0 18px}}.cards{{display:grid;gri
 code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}}
 .critical,.high{{background:#ffe3e3;color:#a51d2d}}.medium{{background:#fff0d4;color:#8a5700}}.low{{background:#e3f4e8;color:#176b37}}
 .notice{{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}}.meta{{color:#68758b;font-size:12px;margin-top:12px}}
-footer.foot{{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}}footer.foot b{{color:#68758b;font-weight:600}}
+header{{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}}.headleft{{min-width:0}}
+.copy{{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border:1px solid rgba(255,255,255,.32);border-radius:20px;background:rgba(255,255,255,.12);color:#dbe7f7;font-size:12.5px;letter-spacing:.3px;white-space:nowrap}}.copy b{{color:#fff;font-weight:700;letter-spacing:.6px}}
 .pending{{color:#8a5700;font-size:11px;font-weight:bold}}
-</style></head><body><header><h1>SBOM: Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
+</style></head><body><header><div class="headleft"><h1>SBOM: Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></div><div class="copy">Copyright &copy; {datetime.now(timezone.utc).year} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
 <section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option><option>NONE</option><option>PENDING</option></select><button id="prev" type="button">Prev</button><button id="next" type="button">Next</button><span id="pager" class="meta"></span></div>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>""")
@@ -641,7 +642,6 @@ footer.foot{{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a
             out.write('<tr><td colspan="8">No package versions found. Check the mounted storage path/layout.</td></tr>')
         out.write(f"""</tbody></table></div>
 <div class="meta">Duration: {s["duration_seconds"]}s · Oversized tarballs skipped: {s["tarballs_skipped_oversize"]} · JSON schema: {esc(report["schema"])}</div>{notice}</section></main>
-<footer class="foot">Copyright &copy; {datetime.now(timezone.utc).year} <b>AIFE in FEIT</b></footer>
 <script>
 const q=document.getElementById('q'),risk=document.getElementById('risk'),pager=document.getElementById('pager');
 const rows=Array.prototype.slice.call(document.querySelectorAll('#tbl tbody tr'));
