@@ -38,7 +38,7 @@ PROGRESS_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
 header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px 20px;box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
-header h1{margin:0;font-size:21px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:underline}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
+header h1{margin:0;font-size:21px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:920px;margin:22px auto;padding:0 18px}
 .card{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
 .bar{height:16px;background:#eef1f5;border-radius:20px;overflow:hidden;margin:8px 0 14px}
@@ -119,7 +119,7 @@ RISK_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta 
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
 header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
-header h1{margin:0;font-size:22px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
+header h1{margin:0;font-size:22px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
 .toolbar{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;align-items:center}
 input[type=text],input[type=password]{padding:9px;border:1px solid #ccd4e2;border-radius:8px}
@@ -247,7 +247,7 @@ PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><met
 ::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
 ::-webkit-scrollbar-corner{background:transparent}
 header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:white;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
-header h1{margin:0;font-size:23px;letter-spacing:.3px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
+header h1{margin:0;font-size:23px;letter-spacing:.3px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:none;opacity:.92}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
 .card.link{text-decoration:none;color:inherit}.card.link:hover{border-color:#315fbd;background:#f7faff}
 .card,.panel{background:white;border:1px solid #e3e8f0;border-radius:11px;padding:15px}.card small{display:block;color:#68758b}.card strong{display:block;font-size:26px;margin-top:4px}
@@ -268,9 +268,28 @@ button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#f
 code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}
 .critical,.high{background:#ffe3e3;color:#a51d2d}.medium{background:#fff0d4;color:#8a5700}.low{background:#e3f4e8;color:#176b37}
 .notice{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}.meta{color:#68758b;font-size:12px;margin-top:12px}
+.dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:16px}
+.dashpanel h2{font-size:12px;margin:0 0 14px;color:#526078;text-transform:uppercase;letter-spacing:.8px;font-weight:700}
+.stackbar{display:flex;height:20px;border-radius:10px;overflow:hidden;background:#eef1f6;box-shadow:inset 0 0 0 1px rgba(20,40,70,.05)}
+.stackbar span{display:block;height:100%;transition:width .3s ease}
+.stackbar span.critical{background:#d9534f}.stackbar span.high{background:#f0a04b}.stackbar span.medium{background:#e8c65a}
+.stackbar span.low{background:#5cb87c}.stackbar span.unknown{background:#a8b3c4}
+.stackbar span.cached{background:#3f7fd0}.stackbar span.latest{background:#63b3ed}.stackbar span.historical{background:#c8d2e0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:12px;color:#46536b}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.big{font-size:40px;font-weight:700;line-height:1;color:#1b2a44}
+.bigrow{display:flex;align-items:baseline;gap:12px}
+.card.kpi{border-top:3px solid #315fbd;position:relative}
+.card.kpi:before{content:"";position:absolute;left:0;top:0;width:100%;height:3px;border-radius:11px 11px 0 0;background:#315fbd;opacity:.9}
+.card.kpi.c1{border-top-color:#3f7fd0}.card.kpi.c2{border-top-color:#5cb87c}.card.kpi.c3{border-top-color:#f0a04b}
+.card.kpi.c4{border-top-color:#d9534f}.card.kpi.c5{border-top-color:#8b5cf6}.card.kpi.c6{border-top-color:#00a2b8}
+.card.kpi .klabel{display:block;color:#68758b;font-size:12px}
+.card.kpi .kvalue{display:block;font-size:28px;font-weight:700;margin-top:6px;color:#16233c}
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
 </style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
-<main><section class="cards">{{cards}}</section>
+<main><section class="cards kpis">{{cards}}</section>
+{{dashboard}}
 <section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
 <p class="meta">Reviewed findings are not counted here, the risk pages show the details.
 <a data-rel="reviewed" href="reviewed">Reviewed findings: {{reviewed_total}}</a></p></section>
@@ -440,7 +459,9 @@ def render_portal(rows, summary, query, state=None):
              ("Vulnerable versions", summary.get("versions_with_vulnerabilities", 0)),
              ("Vulnerability findings", summary.get("vulnerability_findings", 0)),
              ("Dependency edges", summary.get("dependency_edges", 0))]
-    card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
+    card_html = "".join(f'<div class="card kpi c{i}"><span class="klabel">{esc(k)}</span>'
+                        f'<span class="kvalue">{esc(v)}</span></div>'
+                        for i, (k, v) in enumerate(cards, 1))
     severity = risk_counts(rows, REVIEWS.keys())
     if not severity:
         severity = summary.get("severity") or {}
@@ -449,6 +470,7 @@ def render_portal(rows, summary, query, state=None):
         f'<strong>{esc(severity.get(l, 0))}</strong></a>'
         for l in RISK_LEVELS)
     reviewed_total = len(REVIEWS.keys())
+    dashboard = render_dashboard(rows, summary, REVIEWS.keys())
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
                     for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING", "UNKNOWN"))
     ecosystems = sorted({r[11] for r in packages})
@@ -482,6 +504,7 @@ def render_portal(rows, summary, query, state=None):
     page = PORTAL_HEAD
     for key, value in {
             "subtitle": subtitle, "cards": card_html, "risk_cards": risk_cards,
+            "dashboard": dashboard,
             "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
             "count": count_text,
             "rows": body, "pager": pager, "reviewed_total": str(reviewed_total),
@@ -511,6 +534,79 @@ def risk_counts(rows, reviewed):
                 continue
             counts[level] = counts.get(level, 0) + 1
     return counts
+
+
+def dashboard_stats(rows, reviewed):
+    """Numbers for the dashboard panels, the relevant versions only."""
+    levels = {}
+    ecosystems = {}
+    packages = set()
+    cached = latest = historical = 0
+    findings = 0
+    for name, version, _risk, _lic, _tarball, _sha, _deps, links, _hay, is_cached, is_latest, eco in rows:
+        packages.add(name)
+        ecosystems[eco] = ecosystems.get(eco, 0) + 1
+        if is_cached and is_latest:
+            cached += 1
+        elif is_cached:
+            cached += 1
+        elif is_latest:
+            latest += 1
+        else:
+            historical += 1
+        if not (is_cached or is_latest):
+            continue
+        for link in links:
+            key = review_store.finding_key(eco, name, version, link.get("i", ""))
+            if key in reviewed:
+                continue
+            level = (link.get("s") or "UNKNOWN").upper()
+            levels[level] = levels.get(level, 0) + 1
+            findings += 1
+    return {"levels": levels, "ecosystems": ecosystems, "packages": len(packages),
+            "cached": cached, "latest": latest, "historical": historical,
+            "findings": findings, "reviewed": len(reviewed)}
+
+
+def stack_bar(parts, total):
+    """A stacked bar of the given (label, value, color) parts."""
+    if not total:
+        return '<div class="stackbar"></div><div class="legend">nothing yet</div>'
+    bar = "".join(f'<span style="width:{value * 100.0 / total:.2f}%;background:{color}"></span>'
+                  for label, value, color in parts if value)
+    legend = "".join(f'<span><i style="background:{color}"></i>{esc(label)} {value}'
+                     f' ({format(value * 100.0 / total, ".1f")}%)</span>'
+                     for label, value, color in parts if value)
+    return f'<div class="stackbar">{bar}</div><div class="legend">{legend}</div>'
+
+
+def render_dashboard(rows, summary, reviewed):
+    """The dashboard panels of the portal."""
+    stats = dashboard_stats(rows, reviewed)
+    total = stats["findings"]
+    colors = {"CRITICAL": "#d9534f", "HIGH": "#f0a04b", "MEDIUM": "#e8c65a",
+              "LOW": "#5cb87c", "UNKNOWN": "#a8b3c4"}
+    levels = [(l, stats["levels"].get(l, 0), colors[l]) for l in RISK_LEVELS]
+    scope = [("Cached tarball", stats["cached"], "#3f7fd0"),
+             ("Latest version", stats["latest"], "#63b3ed"),
+             ("Historical version", stats["historical"], "#c8d2e0")]
+    ecosystems = sorted(stats["ecosystems"].items(), key=lambda x: -x[1])
+    eco_colors = ["#3f7fd0", "#63b3ed", "#2f6fb5", "#8ab8ea", "#1d5a94"]
+    eco_parts = [(name, count, eco_colors[i % len(eco_colors)])
+                 for i, (name, count) in enumerate(ecosystems)]
+    eco_total = sum(count for _, count in ecosystems)
+    panels = [
+        ("Findings by severity", stack_bar(levels, total)),
+        ("Registry scope", stack_bar(scope, stats["cached"] + stats["latest"] + stats["historical"])),
+        ("Ecosystems", stack_bar(eco_parts, eco_total)),
+        ("Reviewed findings",
+         f'<div class="bigrow"><div class="big">{stats["reviewed"]}</div>'
+         f'<div class="meta">findings are marked as reviewed,<br>they leave the counters and the alerts.</div></div>'
+         f'<p class="meta"><a data-rel="reviewed" href="reviewed">open the reviewed list</a></p>'),
+    ]
+    body = "".join(f'<section class="panel dashpanel"><h2>{esc(title)}</h2>{content}</section>'
+                   for title, content in panels)
+    return f'<section class="dash">{body}</section>'
 
 
 def finish_page(page, where="report portal"):
