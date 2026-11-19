@@ -279,10 +279,10 @@ A finding can be marked as **reviewed** with the checkbox in the first column. R
 - disappear from the risk pages and from the risk files,
 - and are not pushed to ntfy any more.
 
-The state is kept in `reports/risks/reviewed.json` and is applied on the next scan. The portal
-shows how many findings are reviewed per level and the page `/reviewed` lists all of them, a
-finding that is no longer part of the current index is marked as `not in the index` there, so it
-can be cleaned up.
+The state is kept in `reports/risks/reviewed.json`. The portal counters update right away, the
+summary, the risk files and the ntfy alert follow with the next scan. The portal shows how many
+findings are reviewed per level and the page `/reviewed` lists all of them, a finding that is no
+longer part of the current index is marked as `not in the index` there, so it can be cleaned up.
 
 Marking a finding needs the review API key, it is sent in the `X-API-Key` header:
 

@@ -583,17 +583,27 @@ def render_portal(rows, summary, query, state=None):
     count_text = f"{len(hits)} matching of {scoped_total} in scope"
     if scoped_total != len(packages):
         count_text += f" / {len(packages)} total"
-    cards = [("Packages", "Unique packages", summary.get("unique_packages", 0)),
-             ("Versions", "Package versions", summary.get("package_versions", 0)),
-             ("Tarballs", "Tarballs hashed", summary.get("tarballs_scanned", 0)),
-             ("Vulnerable", "Versions with a vulnerability", summary.get("versions_with_vulnerabilities", 0)),
-             ("Findings", "Vulnerability findings", summary.get("vulnerability_findings", 0)),
-             ("Dependencies", "Dependency edges", summary.get("dependency_edges", 0))]
+    stats = index_stats(rows, REVIEWS.keys())
+    if rows:
+        cards = [("Packages", "Unique packages", stats["packages"]),
+                 ("Versions", "Package versions", stats["versions"]),
+                 ("Tarballs", "Tarballs hashed", stats["cached"]),
+                 ("Vulnerable", "Versions with a vulnerability", stats["vulnerable"]),
+                 ("Findings", "Vulnerability findings", stats["findings"]),
+                 ("Dependencies", "Dependency edges", stats["edges"])]
+    else:
+        cards = [("Packages", "Unique packages", summary.get("unique_packages", 0)),
+                 ("Versions", "Package versions", summary.get("package_versions", 0)),
+                 ("Tarballs", "Tarballs hashed", summary.get("tarballs_scanned", 0)),
+                 ("Vulnerable", "Versions with a vulnerability", summary.get("versions_with_vulnerabilities", 0)),
+                 ("Findings", "Vulnerability findings", summary.get("vulnerability_findings", 0)),
+                 ("Dependencies", "Dependency edges", summary.get("dependency_edges", 0))]
     card_html = "".join(f'<div class="card kpi c{i}" title="{esc(full)}"><span class="klabel">{esc(k)}</span>'
                         f'<span class="kvalue">{esc(v)}</span></div>'
                         for i, (k, full, v) in enumerate(cards, 1))
     severity = risk_counts(rows, REVIEWS.keys())
-    if not severity:
+    if not rows:
+        # no index yet, the numbers of the last scan are used
         severity = summary.get("severity") or {}
     risk_cards = "".join(
         f'<a class="card {l.lower()}" href="risk/{l.lower()}" data-rel="risk/{l}"><small>{l}</small>'
@@ -650,6 +660,30 @@ def is_portal_path(path):
     if path.endswith("/index.html"): return True
     last = path.rstrip("/").split("/")[-1]
     return last == "" or "." not in last
+
+
+def index_stats(rows, reviewed):
+    """Global counters from the index, the reviewed findings are not counted."""
+    packages = set()
+    versions = cached = vulnerable = findings = edges = 0
+    for name, version, _risk, _lic, tarball, _sha, deps, links, _hay, is_cached, is_latest, eco in rows:
+        packages.add(name)
+        versions += 1
+        if tarball:
+            cached += 1
+        if deps:
+            edges += deps.count(",") + 1
+        live = 0
+        for link in links:
+            key = review_store.finding_key(eco, name, version, link.get("i", ""))
+            if key in reviewed:
+                continue
+            live += 1
+        if live:
+            vulnerable += 1
+        findings += live
+    return {"packages": len(packages), "versions": versions, "cached": cached,
+            "vulnerable": vulnerable, "findings": findings, "edges": edges}
 
 
 def risk_counts(rows, reviewed):
