@@ -21,7 +21,12 @@ ROOT_SPECS = []
 for spec in os.getenv("SCAN_ROOTS", f"{ROOT}:{ECOSYSTEM}").split(","):
     spec = spec.strip()
     if not spec: continue
-    path, _, eco = spec.partition(":")
+    if spec.startswith("http://") or spec.startswith("https://"):
+        # a url, the ecosystem suffix is behind the last colon
+        head, sep, tail = spec.rpartition(":")
+        path, eco = (head, tail) if sep and "/" not in tail else (spec, "")
+    else:
+        path, _, eco = spec.partition(":")
     ROOT_SPECS.append((path, eco or "npm"))
 REGISTRY_URL = {"npm": os.getenv("NPM_REGISTRY_URL", "").strip(),
                 "PyPI": os.getenv("PYPI_REGISTRY_URL", "").strip()}
@@ -36,6 +41,8 @@ TIMEOUT = max(5, int(os.getenv("OSV_TIMEOUT_SECONDS", "30")))
 RETRIES = max(0, int(os.getenv("OSV_RETRIES", "2")))
 BUDGET = max(0, int(os.getenv("OSV_TIME_BUDGET_SECONDS", "900")))
 MAX_BYTES = max(1, int(os.getenv("MAX_TARBALL_MB", "2048"))) * 1024 * 1024
+PYPI_API_TIMEOUT = max(5, int(os.getenv("PYPI_API_TIMEOUT_SECONDS", "30")))
+PYPI_API_LIMIT = max(1, int(os.getenv("PYPI_API_MAX_COMPONENTS", "200000")))
 PAGE_SIZE = max(20, int(os.getenv("REPORT_PAGE_SIZE", "100")))
 STATIC_HTML_MAX = max(0, int(os.getenv("REPORT_STATIC_HTML_MAX", "50000")))
 ARCHIVE_KEEP = max(0, int(os.getenv("REPORT_ARCHIVE_KEEP", "2")))
@@ -230,9 +237,89 @@ def discover_pypi(root, ecosystem="PyPI"):
             progress("hashing", i, len(files), p.name)
     return records, len(records), 0
 
+def discover_pypi_remote(base_url, ecosystem="PyPI"):
+    """Enumerate the python distributions of a Nexus repository through its REST API."""
+    import pypi_scan
+    server, repo = pypi_scan.nexus_split(base_url)
+    log.info("Reading the nexus repository %s (%s)", repo, ecosystem)
+    components = list(pypi_scan.nexus_search(base_url, timeout=PYPI_API_TIMEOUT, limit=PYPI_API_LIMIT,
+                                              server=server, repo=repo))
+    progress("discovering", 0, len(components), f"reading the nexus repository ({ecosystem})")
+    latest = {}
+    for item in components:
+        name = pypi_scan.normalize_name(item.get("name", ""))
+        version = str(item.get("version", ""))
+        if not name or not version:
+            continue
+        key = pypi_scan.version_key(version)
+        if name not in latest or key > latest[name][0]:
+            latest[name] = (key, version)
+    records = {}
+    count = 0
+    for i, item in enumerate(components, 1):
+        name = pypi_scan.normalize_name(item.get("name", ""))
+        version = str(item.get("version", ""))
+        if not name or not version:
+            continue
+        assets = [a for a in item.get("assets") or [] if pypi_scan.is_distribution(a.get("path", ""))]
+        if not assets:
+            continue
+        asset = sorted(assets, key=lambda a: (not a.get("path", "").lower().endswith(".whl"),
+                                              len(a.get("path", ""))))[0]
+        rec = records.setdefault(name + "@" + version, {"name": name, "version": version})
+        rec["tarball_path"] = asset.get("path", "")
+        rec["tarball_file"] = os.path.basename(asset.get("path", ""))
+        rec["sha256"] = (asset.get("checksum") or {}).get("sha256", "")
+        rec["tarball_size"] = asset.get("fileSize") or 0
+        rec["ecosystem"] = ecosystem
+        rec["registry"] = REGISTRY_URL.get(ecosystem, "") or base_url
+        rec.setdefault("license", "UNKNOWN")
+        rec["source"] = "nexus-api"
+        rec["download_url"] = asset.get("downloadUrl", "")
+        rec["is_latest"] = latest.get(name, (None, None))[1] == version
+        meta = fetch_pypi_metadata(item, rec)
+        if meta:
+            if meta.get("license") and meta["license"] != "UNKNOWN":
+                rec["license"] = meta["license"]
+            if meta.get("requires"):
+                rec["dependencies"] = ",".join(meta["requires"])
+            if meta.get("summary"):
+                rec.setdefault("description", meta["summary"])
+        count += 1
+        progress("discovering", i, len(components), f"{count} python distributions ({ecosystem})")
+    return records, count, 0
+
+
+def fetch_pypi_metadata(item, rec):
+    """Read the metadata of a Nexus component, the pep 658 sidecar file is used."""
+    import pypi_scan
+    assets = item.get("assets") or []
+    sidecar = next((a for a in assets if str(a.get("path", "")).lower().endswith(".metadata")), None)
+    if sidecar and sidecar.get("downloadUrl"):
+        try:
+            raw = pypi_scan.fetch(sidecar["downloadUrl"], timeout=PYPI_API_TIMEOUT)
+            return pypi_scan.metadata_from_bytes(raw, "METADATA")
+        except Exception as e:
+            log.warning("Cannot read the metadata of %s: %s", rec.get("name"), e)
+            return None
+    asset = next((a for a in assets if pypi_scan.is_distribution(a.get("path", ""))), None)
+    if not asset or not asset.get("downloadUrl"):
+        return None
+    try:
+        size = asset.get("fileSize") or 0
+        if size and size > MAX_BYTES:
+            return None
+        raw = pypi_scan.fetch(asset["downloadUrl"], timeout=PYPI_API_TIMEOUT, limit=MAX_BYTES)
+        return pypi_scan.metadata_from_bytes(raw, asset.get("path", ""))
+    except Exception as e:
+        log.warning("Cannot download %s: %s", asset.get("path"), e)
+        return None
+
+
 def discover():
     """Discover every configured registry root and merge the results."""
-    if len(ROOT_SPECS) > 1 or ROOT_SPECS[0][1].lower() in ("pypi", "python", "pip"):
+    if len(ROOT_SPECS) > 1 or ROOT_SPECS[0][1].lower() in ("pypi", "python", "pip") \
+            or ROOT_SPECS[0][0].startswith("http"):
         return discover_all()
     root, ecosystem = ROOT_SPECS[0]
     if ecosystem.lower() in ("pypi", "python", "pip"):
@@ -243,7 +330,20 @@ def discover():
 def discover_all():
     records = {}
     tarballs = skipped = 0
+    errors = []
     for path, ecosystem in ROOT_SPECS:
+        if path.startswith("http://") or path.startswith("https://"):
+            log.info("Scanning %s (%s)", path, ecosystem)
+            try:
+                found, count, skip = discover_pypi_remote(path, ecosystem)
+            except Exception as e:
+                log.error("Cannot read the registry %s: %s", path, e)
+                errors.append(f"{path}: {e}")
+                continue
+            records.update(found)
+            tarballs += count
+            skipped += skip
+            continue
         root = Path(path)
         if not root.is_dir():
             log.warning("Scan root is not a directory, skipped: %s", path)
@@ -256,6 +356,8 @@ def discover_all():
         records.update(found)
         tarballs += count
         skipped += skip
+    if errors:
+        log.warning("Some registries were not read: %s", "; ".join(errors))
     return records, tarballs, skipped
 
 
@@ -707,6 +809,8 @@ def run():
     started = time.monotonic()
     try:
         for path, _eco in ROOT_SPECS:
+            if path.startswith("http://") or path.startswith("https://"):
+                continue
             if not Path(path).is_dir():
                 raise FileNotFoundError(f"Scan root is not a directory: {path}")
         progress("scanning", 0, 0, "scanning storage")

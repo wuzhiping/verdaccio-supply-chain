@@ -149,12 +149,11 @@ One scanner instance can cover several registries and produce a single merged re
 
 ```yaml
     environment:
-      SCAN_ROOTS: "/verdaccio-data:npm, /pypi-data:PyPI"
+      SCAN_ROOTS: "/verdaccio-data:npm, http://10.17.1.201:24873/repository/pypi-group:PyPI"
       NPM_REGISTRY_URL: "https://npm.feg.cn/"
       PYPI_REGISTRY_URL: "http://10.17.1.201:24873/repository/pypi-group"
     volumes:
       - /opt/verdaccio/storage/data:/verdaccio-data:ro
-      - /nexus-data/repository/pypi-group/packages:/pypi-data:ro
       - ./reports:/reports
 ```
 
@@ -168,22 +167,22 @@ One scanner instance can cover several registries and produce a single merged re
 
 ## PyPI repositories
 
-The scanner also works on Python distributions. Set `SCAN_ECOSYSTEM=PyPI` and point `SCAN_ROOT` at the blob store of a Nexus pypi repository (or any PyPI cache):
+The scanner also works on Python distributions. A PyPI source is **not** a directory but a Nexus
+repository url, the components are read through the Nexus REST API, so nothing has to be mounted:
 
 ```yaml
   pypi-supply-chain:
     build: .
     profiles: ["pypi"]
     environment:
-      SCAN_ROOT: /pypi-data
-      SCAN_ECOSYSTEM: PyPI
+      SCAN_ROOTS: "http://10.17.1.201:24873/repository/pypi-group:PyPI"
+      PYPI_REGISTRY_URL: "http://10.17.1.201:24873/repository/pypi-group"
       REPORT_DIR: /reports
       OSV_API_URL: https://api.osv.dev/v1/querybatch
       NTFY_TOPIC: pub_abc
     ports:
       - "8081:8080"
     volumes:
-      - /nexus-data/repository/pypi-group/packages:/pypi-data:ro
       - ./pypi-reports:/reports
 ```
 
@@ -191,10 +190,22 @@ The scanner also works on Python distributions. Set `SCAN_ECOSYSTEM=PyPI` and po
 docker compose -f compose.yml up -d --build
 ```
 
-- the Nexus layout `packages/<name>/<version>/<file>` is understood, the file name is parsed as well (PEP 427 wheel, PEP 625 sdist),
+- `GET /service/rest/v1/search?repository=<repo>&format=pypi` lists the components of the
+  repository, the pagination token is followed until the repository is exhausted,
+- the SHA-256 is taken from the checksum of the asset, no file has to be downloaded for the hash,
+- the license and the requirements are read from the PEP 658 metadata file (`.metadata`) of the
+  asset, the distribution itself is only downloaded when no metadata file exists,
 - package names are normalized per PEP 503, which is what the OSV `PyPI` ecosystem expects,
-- the license and the requirements are read from `METADATA` (wheel) or `PKG-INFO` (sdist),
-- the SHA-256 of every cached distribution is recorded, the report portal and the ntfy alert work exactly like for npm.
+- the newest version of every package is marked as `is_latest`,
+- the report portal and the ntfy alert work exactly like for npm.
+
+A directory can still be used as a PyPI source, the Nexus blob layout
+`packages/<name>/<version>/<file>` is understood there (PEP 427 wheel, PEP 625 sdist).
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `PYPI_API_TIMEOUT_SECONDS` | `30` | Timeout of the Nexus REST requests |
+| `PYPI_API_MAX_COMPONENTS` | `200000` | Maximum number of components per scan |
 
 ## Vulnerability severity
 

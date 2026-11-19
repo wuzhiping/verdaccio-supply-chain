@@ -5,9 +5,10 @@ services:
     container_name: verdaccio-supply-chain
     restart: unless-stopped
     environment:
-      SCAN_ROOTS: "${SCAN_ROOTS:-/verdaccio-data:npm, /pypi-data:PyPI}"
+      # A pypi source is a nexus repository url, it is read through the REST API.
+      SCAN_ROOTS: "${SCAN_ROOTS:-/verdaccio-data:npm, http://10.17.1.201:24873/repository/pypi-group:PyPI}"
       NPM_REGISTRY_URL: ${NPM_REGISTRY_URL:-}
-      PYPI_REGISTRY_URL: ${PYPI_REGISTRY_URL:-}
+      PYPI_REGISTRY_URL: ${PYPI_REGISTRY_URL:-http://10.17.1.201:24873/repository/pypi-group}
       REPORT_DIR: /reports
       SCAN_INTERVAL_HOURS: "24"
       SCAN_ON_START: "true"
@@ -47,7 +48,6 @@ services:
       - "${REPORT_HTTP_PORT:-8080}:8080"
     volumes:
       - ${VERDACCIO_DATA:-./verdaccio-data}:/verdaccio-data:ro
-      - ${PYPI_DATA:-./pypi-data}:/pypi-data:ro
       - ./reports:/reports
     read_only: true
     tmpfs:
