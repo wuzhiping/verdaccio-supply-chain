@@ -52,7 +52,9 @@ table{border-collapse:collapse;width:100%}td,th{padding:7px 4px;border-bottom:1p
 th{width:150px;color:#526078;font-weight:600}.mono{font-family:ui-monospace,monospace;font-size:12px}
 button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff;font-size:14px;cursor:pointer}
 button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
-footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px}footer.foot b{color:#68758b;font-weight:600}
+footer.foot{margin:26px auto 32px;padding:0 18px;display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;color:#8794a8;font-size:12px;letter-spacing:.2px}footer.foot b{color:#68758b;font-weight:600}
+footer.foot .refresh{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}footer.foot .refresh select{padding:5px 8px;border:1px solid #ccd4e2;border-radius:7px;background:#fff;color:#46536b;font-size:12px}footer.foot .refresh label{color:#68758b}
+@media (max-width:640px){main{padding:0 10px;margin:14px auto}header{padding:10px 12px}.copy{font-size:10.5px;padding:5px 11px}footer.foot{flex-direction:column;gap:10px}}
 </style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></div><div class="copy">Copyright &copy; 2026 <b>AIFE in FEIT</b></div></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
 <table><tr><th>Current scan</th><td id="cur">-</td></tr>
@@ -65,7 +67,10 @@ footer.foot{margin:22px auto 28px;padding:0 18px;text-align:center;color:#8794a8
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
 <p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
-<footer class="foot">Developed by <b>Ateam+</b></footer>
+<footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
+<select id="refresh" title="How often the page reloads itself">
+<option value="60">1 min</option><option value="300">5 min</option>
+<option value="1800" selected>30 min</option><option value="3600">60 min</option></select></span></footer>
 <script>
 const $=id=>document.getElementById(id);
 // resolve relative to the current path so a reverse proxy path prefix keeps working
@@ -153,7 +158,10 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">JSON export: {{exports}}</div></section></main>
-<footer class="foot">Developed by <b>Ateam+</b></footer>
+<footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
+<select id="refresh" title="How often the page reloads itself">
+<option value="60">1 min</option><option value="300">5 min</option>
+<option value="1800" selected>30 min</option><option value="3600">60 min</option></select></span></footer>
 
 <script>
 function appDir(){{
@@ -182,6 +190,23 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){
     }catch(e){alert('Failed: '+e);box.checked=!box.checked;}
   });
 });
+
+(function(){{
+  // the refresh interval is kept in the browser
+  var sel=document.getElementById('refresh');
+  if(!sel)return;
+  var KEY='sbom_refresh';
+  var saved=parseInt(localStorage.getItem(KEY)||'1800',10);
+  if(!saved) saved=1800;
+  sel.value=String(saved);
+  var timer=null;
+  function apply(){{
+    if(timer)clearInterval(timer);
+    timer=setInterval(function(){{location.reload();}},parseInt(sel.value,10)*1000);
+  }}
+  sel.addEventListener('change',function(){{localStorage.setItem(KEY,sel.value);apply();}});
+  apply();
+}})();
 </script></body></html>"""
 
 RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -190,7 +215,10 @@ RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
-<footer class="foot">Developed by <b>Ateam+</b></footer>
+<footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
+<select id="refresh" title="How often the page reloads itself">
+<option value="60">1 min</option><option value="300">5 min</option>
+<option value="1800" selected>30 min</option><option value="3600">60 min</option></select></span></footer>
 
 <script>
 (function(){{
@@ -204,6 +232,23 @@ function appDir(){{
   var dir=appDir();
   document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
+}})();
+
+(function(){{
+  // the refresh interval is kept in the browser
+  var sel=document.getElementById('refresh');
+  if(!sel)return;
+  var KEY='sbom_refresh';
+  var saved=parseInt(localStorage.getItem(KEY)||'1800',10);
+  if(!saved) saved=1800;
+  sel.value=String(saved);
+  var timer=null;
+  function apply(){{
+    if(timer)clearInterval(timer);
+    timer=setInterval(function(){{location.reload();}},parseInt(sel.value,10)*1000);
+  }}
+  sel.addEventListener('change',function(){{localStorage.setItem(KEY,sel.value);apply();}});
+  apply();
 }})();
 </script></body></html>"""
 
@@ -222,7 +267,10 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">{{exports}}</div></section></main>
-<footer class="foot">Developed by <b>Ateam+</b></footer>
+<footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
+<select id="refresh" title="How often the page reloads itself">
+<option value="60">1 min</option><option value="300">5 min</option>
+<option value="1800" selected>30 min</option><option value="3600">60 min</option></select></span></footer>
 
 <script>
 function appDir(){{
@@ -251,6 +299,23 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){{
     }}catch(e){{alert('Failed: '+e);box.checked=!box.checked;}}
   }});
 }});
+
+(function(){{
+  // the refresh interval is kept in the browser
+  var sel=document.getElementById('refresh');
+  if(!sel)return;
+  var KEY='sbom_refresh';
+  var saved=parseInt(localStorage.getItem(KEY)||'1800',10);
+  if(!saved) saved=1800;
+  sel.value=String(saved);
+  var timer=null;
+  function apply(){{
+    if(timer)clearInterval(timer);
+    timer=setInterval(function(){{location.reload();}},parseInt(sel.value,10)*1000);
+  }}
+  sel.addEventListener('change',function(){{localStorage.setItem(KEY,sel.value);apply();}});
+  apply();
+}})();
 </script></body></html>"""
 
 PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -287,8 +352,11 @@ button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#f
 code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}
 .critical,.high{background:#ffe3e3;color:#a51d2d}.medium{background:#fff0d4;color:#8a5700}.low{background:#e3f4e8;color:#176b37}
 .notice{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}.meta{color:#68758b;font-size:12px;margin-top:12px}
-footer.foot{margin:26px auto 32px;padding:0 18px;text-align:center;color:#8794a8;font-size:12px;letter-spacing:.2px}
+footer.foot{margin:26px auto 32px;padding:0 18px;display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;color:#8794a8;font-size:12px;letter-spacing:.2px}
 footer.foot b{color:#68758b;font-weight:600}
+footer.foot .refresh{display:inline-flex;align-items:center;gap:7px}
+footer.foot .refresh select{padding:5px 8px;border:1px solid #ccd4e2;border-radius:7px;background:#fff;color:#46536b;font-size:12px}
+footer.foot .refresh label{color:#68758b}
 .dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:16px}
 .dashpanel h2{font-size:12px;margin:0 0 14px;color:#526078;text-transform:uppercase;letter-spacing:.8px;font-weight:700}
 .stackbar{display:flex;height:20px;border-radius:10px;overflow:hidden;background:#eef1f6;box-shadow:inset 0 0 0 1px rgba(20,40,70,.05)}
@@ -308,6 +376,24 @@ footer.foot b{color:#68758b;font-weight:600}
 .card.kpi .klabel{display:block;color:#68758b;font-size:12px}
 .card.kpi .kvalue{display:block;font-size:28px;font-weight:700;margin-top:6px;color:#16233c}
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
+@media (max-width:900px){.dash{grid-template-columns:1fr}.cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+@media (max-width:640px){
+ main{margin:14px auto;padding:0 10px}
+ header{padding:10px 12px;gap:8px}
+ header h1{font-size:17px}header p{font-size:11.5px}
+ .copy{font-size:10.5px;padding:5px 11px;letter-spacing:.1px}
+ .cards{grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:9px}
+ .card,.panel{padding:12px;border-radius:10px}
+ .card.kpi .kvalue{font-size:22px}.card.kpi .klabel{font-size:11px}
+ .dash{gap:11px;margin-top:12px}
+ .toolbar{gap:8px}
+ .toolbar input,.toolbar select,input,select{min-width:0;width:100%}
+ .toolbar button{width:100%}
+ .tablewrap table{min-width:640px;font-size:12.5px}
+ .tablewrap td,.tablewrap th{padding:7px 8px}
+ .big{font-size:32px}
+ footer.foot{margin:20px auto 24px;padding:0 12px;flex-direction:column;gap:10px}
+}
 </style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards kpis">{{cards}}</section>
 {{dashboard}}
@@ -320,7 +406,10 @@ footer.foot b{color:#68758b;font-weight:600}
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Ecosystem</th><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>{{rows}}</tbody></table></div>
 {{pager}}
 <div class="meta">JSON schema: {{schema}} · full JSON ({{size}}) is in the reports directory, not linked here · <a data-rel="progress" href="progress">scan progress</a></div>{{notice}}</section></main>
-<footer class="foot">Developed by <b>Ateam+</b></footer>
+<footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
+<select id="refresh" title="How often the page reloads itself">
+<option value="60">1 min</option><option value="300">5 min</option>
+<option value="1800" selected>30 min</option><option value="3600">60 min</option></select></span></footer>
 
 <script>
 (function(){{
@@ -336,6 +425,23 @@ function appDir(){{
   var dir=appDir();
   document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
+}})();
+
+(function(){{
+  // the refresh interval is kept in the browser
+  var sel=document.getElementById('refresh');
+  if(!sel)return;
+  var KEY='sbom_refresh';
+  var saved=parseInt(localStorage.getItem(KEY)||'1800',10);
+  if(!saved) saved=1800;
+  sel.value=String(saved);
+  var timer=null;
+  function apply(){{
+    if(timer)clearInterval(timer);
+    timer=setInterval(function(){{location.reload();}},parseInt(sel.value,10)*1000);
+  }}
+  sel.addEventListener('change',function(){{localStorage.setItem(KEY,sel.value);apply();}});
+  apply();
 }})();
 </script></body></html>"""
 

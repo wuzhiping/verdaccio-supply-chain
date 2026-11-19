@@ -208,6 +208,11 @@ A directory can still be used as a PyPI source, the Nexus blob layout
 | `PYPI_API_TIMEOUT_SECONDS` | `30` | Timeout of the Nexus REST requests |
 | `PYPI_API_MAX_COMPONENTS` | `200000` | Maximum number of components per scan |
 
+## Refresh interval
+
+The portal pages reload themselves, the interval is chosen in the footer (1 min, 5 min, 30 min,
+60 min) and stored in the browser, the default is 30 minutes.
+
 ## Vulnerability severity
 
 A gateway that only returns advisory IDs (no severity) makes every finding look harmless. The scanner therefore resolves the severity of every advisory that arrives without it:
