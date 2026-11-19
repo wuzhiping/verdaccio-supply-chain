@@ -39,6 +39,8 @@ def collect(report, scoped=True):
     for pkg in report.get("packages", []):
         is_relevant = relevant(pkg)
         for vuln in pkg.get("vulnerabilities", []):
+            if vuln.get("reviewed"):
+                continue
             level = (vuln.get("severity") or "UNKNOWN").upper()
             if level in ALERT_LEVELS:
                 findings.append((level, str(pkg.get("name", "")), str(pkg.get("version", "")),

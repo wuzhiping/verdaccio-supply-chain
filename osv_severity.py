@@ -33,6 +33,21 @@ WEB_SPECIFIC = re.compile(r'<pre class="specific">(.*?)</pre>', re.S)
 _CACHE = {}
 
 
+def _cache():
+    """Shared persistent cache, the same instance the scanner uses."""
+    global _CACHE_OBJ
+    if _CACHE_OBJ is None:
+        try:
+            import osv_cache
+            _CACHE_OBJ = osv_cache.get_cache()
+        except Exception:
+            _CACHE_OBJ = False
+    return _CACHE_OBJ or None
+
+
+_CACHE_OBJ = None
+
+
 def level_of(score):
     try:
         n = float(score)
@@ -165,6 +180,11 @@ def fetch_web(vid):
 
 def lookup(vid):
     """Resolve one advisory id to severity, score and summary."""
+    cache = _cache()
+    cached = cache.get_advisory(vid) if cache else None
+    if cached is not None:
+        return cached
+    cache = _cache()
     try:
         record = fetch_detail(vid)
         data = {"severity": severity_from_api(record)}
@@ -184,6 +204,8 @@ def lookup(vid):
             data["summary"] = record["summary"][:500]
         if record.get("references"):
             data["url"] = record["references"][0].get("url")
+        if cache:
+            cache.set_advisory(vid, data)
         return data
     except Exception as e:
         log.debug("Detail lookup failed for %s: %s", vid, e)
@@ -204,15 +226,16 @@ def enrich(items):
         if vid and vid != "UNKNOWN" and item.get("severity", "UNKNOWN") == "UNKNOWN" and vid not in _CACHE:
             if vid not in pending:
                 pending.append(vid)
-    if not pending:
-        return 0
-    if MAX_FETCH and len(pending) > MAX_FETCH:
-        log.warning("Severity enrichment limited to %s advisories, %s stay UNKNOWN", MAX_FETCH, len(pending) - MAX_FETCH)
-        pending = pending[:MAX_FETCH]
-    log.info("Resolving severity for %s advisories via %s", len(pending), DETAIL_URL)
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        for vid, data in zip(pending, pool.map(lookup, pending)):
-            _CACHE[vid] = data
+    if pending:
+        if MAX_FETCH and len(pending) > MAX_FETCH:
+            log.warning("Severity enrichment limited to %s advisories, %s stay UNKNOWN", MAX_FETCH, len(pending) - MAX_FETCH)
+            pending = pending[:MAX_FETCH]
+        log.info("Resolving severity for %s advisories via %s", len(pending), DETAIL_URL)
+        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+            for vid, data in zip(pending, pool.map(lookup, pending)):
+                _CACHE[vid] = data
+    # The cached severities are applied as well, otherwise a second scan would
+    # report the advisories as UNKNOWN again.
     changed = 0
     for item in items:
         vid = str(item.get("id") or "")

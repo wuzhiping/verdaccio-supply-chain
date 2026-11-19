@@ -8,6 +8,8 @@ from collections import Counter
 import report_server
 import notifier
 import osv_severity
+import osv_cache
+import review_store
 from scan_control import CONTROL, LOCK
 
 ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
@@ -23,6 +25,9 @@ for spec in os.getenv("SCAN_ROOTS", f"{ROOT}:{ECOSYSTEM}").split(","):
     ROOT_SPECS.append((path, eco or "npm"))
 REGISTRY_URL = {"npm": os.getenv("NPM_REGISTRY_URL", "").strip(),
                 "PyPI": os.getenv("PYPI_REGISTRY_URL", "").strip()}
+CACHE_DIR = os.getenv("OSV_CACHE_DIR", str(OUT / ".osv-cache"))
+CACHE = osv_cache.get_cache(CACHE_DIR)
+REVIEWS = review_store.ReviewStore(str(OUT / "risks"))
 INTERVAL = max(1, int(os.getenv("SCAN_INTERVAL_HOURS", "24")))
 OSV = os.getenv("OSV_ENABLED", "true").lower() not in ("0", "false", "no")
 OSV_URL = os.getenv("OSV_API_URL", "https://api.osv.dev/v1/querybatch")
@@ -361,9 +366,33 @@ def scan_vulnerabilities(records):
                 break
             group = eco_items[j:j+BATCH]
             i += len(group)
+            known = {}
+            missing = []
+            for rec in group:
+                hit = CACHE.get_queries(eco, rec["name"], rec["version"])
+                if hit is None:
+                    missing.append(rec)
+                else:
+                    known[(rec["name"], rec["version"])] = hit
+            if missing:
+                try:
+                    results = query_osv(missing)
+                    for rec, vulns in zip(missing, results):
+                        CACHE.set_queries(eco, rec["name"], rec["version"], vulns)
+                        known[(rec["name"], rec["version"])] = vulns
+                except Exception as e:
+                    msg = f"batch {i//BATCH+1} ({eco}): {e}"
+                    errors.append(msg)
+                    for rec in missing:
+                        rec["vulnerabilities"] = []
+                        rec["vulnerability_scan_error"] = str(e)
+                    log.exception("OSV batch failed")
+                    progress("osv", i, len(items),
+                             f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
+                    continue
             try:
-                results = query_osv(group)
-                for rec, vulns in zip(group, results):
+                for rec in group:
+                    vulns = known.get((rec["name"], rec["version"]), [])
                     rec["vulnerabilities"] = [{
                         "id": v.get("id", "UNKNOWN"), "summary": (v.get("summary") or v.get("details") or "")[:500],
                         "severity": severity(v), "aliases": v.get("aliases", []),
@@ -380,6 +409,7 @@ def scan_vulnerabilities(records):
                 log.exception("OSV batch failed")
             progress("osv", i, len(items),
                      f"{len(items)} package versions, {round(time.monotonic() - started, 1)}s elapsed")
+    log.info("OSV cache: %s", json.dumps(CACHE.stats()))
     unresolved = [v for rec in items for v in rec.get("vulnerabilities", []) if v.get("severity") == "UNKNOWN"]
     if unresolved:
         log.info("Resolving severity for %s advisories without severity data", len(unresolved))
@@ -388,6 +418,16 @@ def scan_vulnerabilities(records):
     if unresolved and all(v.get("severity") == "UNKNOWN" for v in unresolved):
         message = ((message + "; ") if message else "") + f"severity unresolved for {len(unresolved)} advisories"
     return total, message
+
+def mark_reviewed(report):
+    """Flag the findings that were reviewed, they leave the statistics."""
+    reviewed = REVIEWS.keys()
+    for r in report["packages"]:
+        eco = r.get("ecosystem", ECOSYSTEM)
+        for v in r.get("vulnerabilities", []):
+            key = review_store.finding_key(eco, r.get("name", ""), r.get("version", ""), v.get("id", ""))
+            v["reviewed"] = key in reviewed
+
 
 def summarize(report):
     """Recompute the summary counters from the package list."""
@@ -398,9 +438,10 @@ def summarize(report):
         names.add(r["name"])
         licenses[r.get("license", "UNKNOWN")] += 1
         edges += sum(dep_count(r.get(k, "")) for k in ("dependencies", "optionalDependencies", "peerDependencies"))
-        if r.get("vulnerabilities"): vulnerable += 1
+        live = [v for v in r.get("vulnerabilities", []) if not v.get("reviewed")]
+        if live: vulnerable += 1
         ecosystems[r.get("ecosystem", ECOSYSTEM)] += 1
-        for v in r.get("vulnerabilities", []): sev[v.get("severity", "UNKNOWN")] += 1
+        for v in live: sev[v.get("severity", "UNKNOWN")] += 1
     report["summary"].update({
         "unique_packages": len(names), "package_versions": len(report["packages"]),
         "versions_with_vulnerabilities": vulnerable, "vulnerability_findings": sum(sev.values()),
@@ -476,7 +517,7 @@ def render_html(report, out):
         notice = ""
     if True:
         out.write(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Verdaccio Supply Chain Security</title><style>
+<title>SBOM: Supply Chain Security</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui, sans-serif}}
 header{{background:#172b4d;color:white;padding:25px max(20px,calc((100vw - 1450px)/2))}}header h1{{margin:0;font-size:24px}}header p{{color:#cbd6e8;margin:5px 0}}
 main{{max-width:1450px;margin:22px auto;padding:0 18px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}}
@@ -487,9 +528,9 @@ code{{font-size:11px;overflow-wrap:anywhere}}a{{color:#315fbd}}.risk{{padding:2p
 .critical,.high{{background:#ffe3e3;color:#a51d2d}}.medium{{background:#fff0d4;color:#8a5700}}.low{{background:#e3f4e8;color:#176b37}}
 .notice{{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}}.meta{{color:#68758b;font-size:12px;margin-top:12px}}
 .pending{{color:#8a5700;font-size:11px;font-weight:bold}}
-</style></head><body><header><h1>Verdaccio Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
+</style></head><body><header><h1>SBOM: Supply Chain Security</h1><p>Full registry scan · {esc(report["generated_at"])} · OSV {"enabled" if report["osv"]["enabled"] else "disabled"}</p></header>
 <main><section class="cards">{card_html}</section><section class="panel"><h2>Vulnerability severity</h2><div class="cards">{sev_html}</div></section>
-<section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>MEDIUM</option><option>LOW</option><option>NONE</option><option>PENDING</option></select><button id="prev" type="button">Prev</button><button id="next" type="button">Next</button><span id="pager" class="meta"></span></div>
+<section class="panel"><h2>Package inventory</h2><div class="toolbar"><input id="q" placeholder="Search package, version, hash, CVE…"><select id="risk"><option value="">All severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>UNKNOWN</option><option>NONE</option><option>PENDING</option></select><button id="prev" type="button">Prev</button><button id="next" type="button">Next</button><span id="pager" class="meta"></span></div>
 <div class="tablewrap"><table id="tbl"><thead><tr><th>Package</th><th>Version</th><th>Risk</th><th>License</th><th>Tarball</th><th>SHA256</th><th>Dependencies</th><th>Vulnerabilities</th></tr></thead><tbody>""")
         for row in rows():
             out.write(row)
@@ -554,6 +595,36 @@ def prune_archives():
         except OSError:
             pass
 
+RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
+
+def write_risk_files(report):
+    """Store the findings per severity level next to the reports."""
+    directory = OUT / "risks"
+    directory.mkdir(parents=True, exist_ok=True)
+    buckets = {level: [] for level in RISK_LEVELS}
+    for r in report["packages"]:
+        eco = r.get("ecosystem", ECOSYSTEM)
+        for v in r.get("vulnerabilities", []):
+            if v.get("reviewed"):
+                continue
+            level = (v.get("severity") or "UNKNOWN").upper()
+            buckets.setdefault(level, []).append({
+                "package": r.get("name", ""), "version": r.get("version", ""),
+                "ecosystem": eco, "registry": r.get("registry", ""),
+                "advisory": v.get("id", "UNKNOWN"), "severity": level,
+                "score": v.get("cvss_score"), "summary": (v.get("summary") or "")[:300],
+                "sha256": r.get("sha256", ""), "tarball": r.get("tarball_file", ""),
+                "cached": bool(r.get("tarball_file")), "latest": bool(r.get("is_latest"))})
+    for level, items in buckets.items():
+        path = directory / f"{level.lower()}.json"
+        tmp = path.with_name(path.name + ".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            json.dump({"level": level, "generated_at": report.get("generated_at"),
+                       "count": len(items), "findings": items}, fh, ensure_ascii=False, indent=1)
+        tmp.replace(path)
+    log.info("Risk files written: %s", ", ".join(f"{k}={len(v)}" for k, v in buckets.items()))
+
+
 def write_index(report):
     """Write a compact index the portal can page through without the full report."""
     summary = dict(report.get("summary", {}))
@@ -579,6 +650,7 @@ def write_index(report):
             level = max((v.get("severity", "UNKNOWN") for v in vulns), key=lambda x: RANK.get(x, 0),
                         default="PENDING" if pending else "NONE")
             links = [{"i": v.get("id", "UNKNOWN"), "s": v.get("severity", "UNKNOWN"),
+                      "sc": v.get("cvss_score"),
                       "u": (v.get("references") or ["https://osv.dev/vulnerability/" + v.get("id", "")])[0]}
                      for v in vulns]
             name = r.get("name", "")
@@ -651,13 +723,16 @@ def run():
         vuln_total, osv_error = scan_vulnerabilities(records)
         r["scan_state"] = "complete"
         r["osv"]["error"] = osv_error
-        r["summary"]["vulnerability_findings"] = vuln_total
+        mark_reviewed(r)
+        r["summary"]["vulnerability_findings"] = sum(1 for rec in records.values()
+                                                     for v in rec.get("vulnerabilities", []) if not v.get("reviewed"))
         r["summary"]["vulnerability_scan_incomplete"] = bool(osv_error)
         summarize(r)
         r["summary"]["duration_seconds"] = round(time.monotonic() - started, 2)
         progress("reporting", 1, 1, "writing report")
         write_report(r)
         write_index(r)
+        write_risk_files(r)
         s = r["summary"]
         log.info("Scan complete: packages=%s versions=%s tarballs=%s findings=%s peak_rss=%sMB",
                  s["unique_packages"], s["package_versions"], s["tarballs_scanned"],

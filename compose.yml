@@ -27,6 +27,8 @@ services:
       REPORT_HTTP_BIND: "0.0.0.0"
       REPORT_HTTP_PORT: "8080"
       REPORT_TOKEN: ${REPORT_TOKEN:-}
+      # API key for marking a finding as reviewed on the risk pages.
+      REVIEW_API_KEY: ${REVIEW_API_KEY:-123456}
       SCAN_RETRY_AFTER_SECONDS: "10"
       NTFY_ENABLED: "true"
       NTFY_URL: ${NTFY_URL:-https://msn.feg.cn}

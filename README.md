@@ -1,4 +1,4 @@
-# Verdaccio Supply Chain Security Scanner
+# SBOM: Supply Chain Security Scanner
 
 Read-only scheduled scanner for Verdaccio npm storage. Python uses only its standard library.
 
@@ -59,7 +59,7 @@ The service works behind a reverse proxy, also when it is mounted under a path p
 - The progress page resolves the API relative to its own URL, and every link in the report portal (`latest.json`, `progress`) is resolved at runtime from `location.pathname`, so they keep working under any prefix.
 - The application root is detected from the request path, so `/sbom/`, `/sbom` and `/sbom/index.html` all serve the portal.
 - Search form, pager links and the progress page resolve against the current URL, so no absolute path is left that would drop the prefix.
-- API routes (`/api/scan`, `/api/scan/status`, `/progress`, `/healthz`) are matched by path suffix, and report files are looked up by suffix as well, so the proxy may either strip the prefix (`proxy_pass http://backend/`) or keep it.
+- API routes (`/api/scan`, `/api/scan/status`, `/api/review`, `/progress`, `/risk/<level>`, `/healthz`) are matched by path suffix, and report files are looked up by suffix as well, so the proxy may either strip the prefix (`proxy_pass http://backend/`) or keep it.
 - The token cookie is issued with `Path=/`, so it is sent for every proxied path.
 
 ```nginx
@@ -228,6 +228,55 @@ The report portal defaults to **Registry relevant** (cached or latest), with `Al
 ```
 
 The ntfy alert uses the same scope (`NTFY_SCOPE`, `relevant` by default, `all` to disable the filter): only critical and high advisories of relevant versions are listed, and the number of advisories that only exist in historical versions is reported as a single line.
+
+## Risk pages & reviewed findings
+
+The findings are also stored per severity level, so they can be looked at without the portal:
+
+```
+reports/risks/critical.json   reports/risks/high.json   reports/risks/medium.json
+reports/risks/low.json        reports/risks/unknown.json
+```
+
+Each file holds `level`, `generated_at`, `count` and the `findings` (package, version, ecosystem,
+registry, advisory, severity, score, summary, sha256, tarball, cached, latest).
+
+The portal serves the same data as a table, one page per severity level:
+
+```
+/risk            overview with the count per level
+/risk/CRITICAL   the critical findings, paginated
+/risk/HIGH?page=2
+```
+
+A finding can be marked as **reviewed** with the checkbox in the first column. Reviewed findings
+
+- are no longer counted in the summary (`severity`, `vulnerability_findings`),
+- disappear from the risk pages and from the risk files,
+- and are not pushed to ntfy any more.
+
+The state is kept in `reports/risks/reviewed.json` and is applied on the next scan. Marking a
+finding needs the review API key, it is sent in the `X-API-Key` header:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `REVIEW_API_KEY` | `123456` | Key required to mark a finding as reviewed |
+
+```bash
+# mark one finding as reviewed
+curl -X POST http://127.0.0.1:8080/api/review \
+  -H "Content-Type: application/json" -H "X-API-Key: 123456" \
+  -d '{"key":"npm:minimist@1.2.5:GHSA-xvch-5gv4-984h","reviewed":true}'
+
+# undo it
+curl -X POST http://127.0.0.1:8080/api/review \
+  -H "Content-Type: application/json" -H "X-API-Key: 123456" \
+  -d '{"key":"npm:minimist@1.2.5:GHSA-xvch-5gv4-984h","reviewed":false}'
+```
+
+The key is `npm:minimist@1.2.5:GHSA-xvch-5gv4-984h` in the format `ecosystem:name@version:advisory`.
+A wrong or missing key is answered with `401` and nothing is changed. The portal keeps the key in
+the browser local storage, so it does not have to be typed for every finding.
 
 ## Risk alerts & scan status (ntfy)
 
