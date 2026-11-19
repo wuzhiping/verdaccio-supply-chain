@@ -29,8 +29,15 @@ RETRY_AFTER = os.getenv("SCAN_RETRY_AFTER_SECONDS", "10")
 
 PROGRESS_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Scan progress</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
-header{background:#172b4d;color:#fff;padding:22px 20px}header h1{margin:0;font-size:21px}header p{color:#cbd6e8;margin:6px 0 0}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(49,95,189,.42) transparent}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
+::-webkit-scrollbar-corner{background:transparent}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px 20px;box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header h1{margin:0;font-size:21px}header h1 a{color:#fff;text-decoration:none}header h1 a:hover{text-decoration:underline}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:920px;margin:22px auto;padding:0 18px}
 .card{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
 .bar{height:16px;background:#eef1f5;border-radius:20px;overflow:hidden;margin:8px 0 14px}
@@ -39,7 +46,7 @@ table{border-collapse:collapse;width:100%}td,th{padding:7px 4px;border-bottom:1p
 th{width:150px;color:#526078;font-weight:600}.mono{font-family:ui-monospace,monospace;font-size:12px}
 button{padding:9px 16px;border:0;border-radius:8px;background:#315fbd;color:#fff;font-size:14px;cursor:pointer}
 button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13px}
-</style></head><body><header><h1>Scan progress</h1><p id="state">loading…</p></header>
+</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
 <table><tr><th>Current scan</th><td id="cur">-</td></tr>
 <tr><th>Phase</th><td id="phase">-</td></tr>
@@ -64,6 +71,7 @@ function appDir(){
 const dir=appDir();
 const base=new URL(dir,location.href).href;
 const api=new URL(dir+'api/scan',location.href).href;
+document.querySelectorAll('a[data-home]').forEach(function(a){a.href=dir;});
 document.querySelectorAll('a[data-rel]').forEach(function(a){a.href=new URL(dir+a.getAttribute('data-rel'),location.href).href;});
 const token=new URLSearchParams(location.search).get('token');
 const withToken=u=>token?u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(token):u;
@@ -102,7 +110,13 @@ poll();setInterval(poll,2000);
 
 RISK_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security · risk {{level}}</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(49,95,189,.42) transparent}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
+::-webkit-scrollbar-corner{background:transparent}
 header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
 header h1{margin:0;font-size:22px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
@@ -112,10 +126,13 @@ button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#f
 .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:900px}td,th{padding:9px;border-bottom:1px solid #e5e9f0;text-align:left;vertical-align:top}th{background:#f8f9fc;color:#526078}
 code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;font-size:12px}
 .risk{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}
+.tag{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:bold;vertical-align:middle}
+.tag.critical{background:#fdeaea;color:#8d1b2c}.tag.high{background:#fff0e2;color:#8a4a08}
+.tag.medium{background:#fff7df;color:#7a5600}.tag.low{background:#e9f7ee;color:#14653a}.tag.unknown{background:#eef1f6;color:#4a566b}
 .critical,.high{background:#fdeaea;color:#8d1b2c}.medium{background:#fff7df;color:#7a5600}.low{background:#e9f7ee;color:#14653a}.unknown{background:#eef1f6;color:#4a566b}
 .reviewed{opacity:.45}.reviewed td:nth-child(2){text-decoration:line-through}
 .checkbox{width:17px;height:17px}.links a{margin-right:12px}
-</style></head><body><header><h1>{{title}}</h1><p>{{subtitle}}</p></header>
+</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag {{level_class}}">{{level}}</span></h1><p>{{subtitle}}</p></header>
 <main><section class="panel"><div class="toolbar">
 <input id="key" type="password" placeholder="API key for review (saved in this browser)">
 <button id="savekey" type="button">Save key</button>
@@ -134,6 +151,7 @@ function appDir(){{
   return p+'/';
 }}
 var DIR=appDir();
+document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR;}});
 document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=DIR+a.getAttribute('data-rel');}});
 const KEY=localStorage.getItem('sbom_api_key')||'';
 document.getElementById('key').value=KEY;
@@ -153,7 +171,7 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){
 
 RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security · risks</title><style>__STYLE__</style></head>
-<body><header><h1>SBOM: Supply Chain Security</h1><p>{{subtitle}}</p></header>
+<body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
@@ -167,13 +185,20 @@ function appDir(){{
   return p+'/';
 }}
   var dir=appDir();
+  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
 }})();
 </script></body></html>"""
 
 PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(49,95,189,.42) transparent}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(49,95,189,.42);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(49,95,189,.68)}
+::-webkit-scrollbar-corner{background:transparent}
 header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:white;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
 header h1{margin:0;font-size:23px;letter-spacing:.3px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
@@ -196,7 +221,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 .critical,.high{background:#ffe3e3;color:#a51d2d}.medium{background:#fff0d4;color:#8a5700}.low{background:#e3f4e8;color:#176b37}
 .notice{background:#fff8e8;padding:10px;border:1px solid #f0dfb4;border-radius:8px}.meta{color:#68758b;font-size:12px;margin-top:12px}
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
-</style></head><body><header><h1>SBOM: Supply Chain Security</h1><p>{{subtitle}}</p></header>
+</style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
 <section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
 <p class="meta">Reviewed findings are not counted here, the risk pages show the details.</p></section>
@@ -218,6 +243,7 @@ function appDir(){{
   return p+'/';
 }}
   var dir=appDir();
+  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
 }})();
 </script></body></html>"""
@@ -365,7 +391,9 @@ def render_portal(rows, summary, query, state=None):
              ("Vulnerability findings", summary.get("vulnerability_findings", 0)),
              ("Dependency edges", summary.get("dependency_edges", 0))]
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
-    severity = summary.get("severity") or {}
+    severity = risk_counts(rows, REVIEWS.keys())
+    if not severity:
+        severity = summary.get("severity") or {}
     risk_cards = "".join(
         f'<a class="card {l.lower()}" href="risk/{l.lower()}" data-rel="risk/{l}"><small>{l}</small>'
         f'<strong>{esc(severity.get(l, 0))}</strong></a>'
@@ -421,10 +449,8 @@ def is_portal_path(path):
     return last == "" or "." not in last
 
 
-def render_risk_index():
-    """Overview of every severity level."""
-    rows = INDEX.rows() if INDEX else []
-    reviewed = REVIEWS.keys()
+def risk_counts(rows, reviewed):
+    """Findings per severity level, only the relevant versions and without the reviewed ones."""
     counts = {}
     for name, version, _risk, _lic, _tarball, _sha, _deps, links, _hay, cached, latest, eco in rows:
         if not (cached or latest):
@@ -435,6 +461,14 @@ def render_risk_index():
             if key in reviewed:
                 continue
             counts[level] = counts.get(level, 0) + 1
+    return counts
+
+
+def render_risk_index():
+    """Overview of every severity level."""
+    rows = INDEX.rows() if INDEX else []
+    reviewed = REVIEWS.keys()
+    counts = risk_counts(rows, reviewed)
     cards = "".join(f'<a class="card {l.lower()}" data-rel="risk/{l.lower()}" href="risk/{l.lower()}">'
                     f'<small>{l}</small><strong>{counts.get(l, 0)}</strong></a>' for l in RISK_LEVELS)
     exports = " · ".join(f'<a data-rel="risks/{l.lower()}.json" href="risks/{l.lower()}.json">{l.lower()}.json</a>'
@@ -505,7 +539,7 @@ def render_risk_page(level, query):
         nav = f'<span class="meta">Page {page} / {pages}</span>'
     html = RISK_HEAD
     for key, value in {
-            "level": level, "title": f"Risks · {level}",
+            "level": level, "level_class": level.lower(), "title": f"Risks · {level}",
             "subtitle": f"{len(findings)} findings at {level} · cached or newest versions only · "
                         f"reviewed findings leave the statistics and the alerts",
             "rows": "\n".join(body) or '<tr><td colspan="8">No findings.</td></tr>',
