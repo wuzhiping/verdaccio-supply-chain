@@ -54,3 +54,62 @@ services:
     cap_drop: [ALL]
     mem_limit: ${SCAN_MEM_LIMIT:-4g}
     cpus: 2.0
+
+  # PyPI distributions cached by a Nexus pypi repository.
+  # Mount the Nexus blob store of that repository, for example:
+  #   /nexus-data/repository/pypi-group/packages:/pypi-data:ro
+  pypi-supply-chain:
+    build: .
+    image: local/verdaccio-supply-chain:1.0.0
+    container_name: pypi-supply-chain
+    restart: unless-stopped
+    profiles: ["pypi"]
+    command:
+      - sh
+      - -c
+      - 'HTTPS_PROXY=${HTTPS_PROXY:-} HTTP_PROXY=${HTTP_PROXY:-} NO_PROXY=${NO_PROXY:-localhost,127.0.0.1} exec python -u /app/scanner.py'
+    environment:
+      SCAN_ROOT: /pypi-data
+      REPORT_DIR: /reports
+      SCAN_ECOSYSTEM: PyPI
+      SCAN_INTERVAL_HOURS: "24"
+      SCAN_ON_START: "true"
+      OSV_ENABLED: "true"
+      OSV_API_URL: ${OSV_API_URL:-https://api.osv.dev/v1/querybatch}
+      OSV_BATCH_SIZE: "1000"
+      OSV_TIMEOUT_SECONDS: "15"
+      OSV_RETRIES: "1"
+      OSV_TIME_BUDGET_SECONDS: "3600"
+      OSV_ENRICH: ${OSV_ENRICH:-true}
+      OSV_ENRICH_MAX: "5000"
+      OSV_ENRICH_WORKERS: "8"
+      MAX_TARBALL_MB: "2048"
+      REPORT_HTTP_BIND: "0.0.0.0"
+      REPORT_HTTP_PORT: "8080"
+      REPORT_TOKEN: ${REPORT_TOKEN:-}
+      SCAN_RETRY_AFTER_SECONDS: "10"
+      NTFY_ENABLED: "true"
+      NTFY_URL: ${NTFY_URL:-https://msn.feg.cn}
+      NTFY_TOPIC: ${PYPI_NTFY_TOPIC:-pub_abc}
+      NTFY_ALERT_MODE: ${NTFY_ALERT_MODE:-always}
+      NTFY_SCOPE: ${NTFY_SCOPE:-relevant}
+      NTFY_TIMEOUT_SECONDS: "10"
+      NTFY_RETRIES: "2"
+      NTFY_MAX_MESSAGE_BYTES: "3500"
+      NTFY_MAX_ITEMS: "20"
+      REPORT_PUBLIC_URL: ${PYPI_REPORT_PUBLIC_URL:-}
+      LOG_LEVEL: INFO
+      TZ: Asia/Taipei
+    ports:
+      - "${PYPI_REPORT_HTTP_PORT:-8081}:8080"
+    volumes:
+      - ${PYPI_DATA:-./pypi-data}:/pypi-data:ro
+      - ./pypi-reports:/reports
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: ${SCAN_MEM_LIMIT:-4g}
+    cpus: 2.0

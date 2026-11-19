@@ -14,6 +14,8 @@ ROOT = Path(os.getenv("SCAN_ROOT", "/verdaccio-data"))
 OUT = Path(os.getenv("REPORT_DIR", "/reports"))
 INTERVAL = max(1, int(os.getenv("SCAN_INTERVAL_HOURS", "24")))
 OSV = os.getenv("OSV_ENABLED", "true").lower() not in ("0", "false", "no")
+ECOSYSTEM = os.getenv("SCAN_ECOSYSTEM", "npm").strip() or "npm"
+PYPI = ECOSYSTEM.lower() in ("pypi", "python", "pip")
 OSV_URL = os.getenv("OSV_API_URL", "https://api.osv.dev/v1/querybatch")
 BATCH = max(1, min(1000, int(os.getenv("OSV_BATCH_SIZE", "100"))))
 TIMEOUT = max(5, int(os.getenv("OSV_TIMEOUT_SECONDS", "30")))
@@ -167,7 +169,54 @@ def sha256(path):
         for chunk in iter(lambda: f.read(1024 * 1024), b""): h.update(chunk)
     return h.hexdigest()
 
+def discover_pypi():
+    """Discover Python distributions from a Nexus or PyPI style storage layout."""
+    import pypi_scan
+    records = {}
+    files = []
+    for p in ROOT.rglob("*"):
+        try:
+            if p.is_file() and p.name.lower().endswith(pypi_scan.DIST_SUFFIXES):
+                files.append(p)
+        except OSError:
+            continue
+    progress("discovering", 0, len(files), "reading python distributions")
+    for i, p in enumerate(files, 1):
+        try:
+            parsed = pypi_scan.parse_filename(p.name)
+            if not parsed:
+                continue
+            name, version = parsed
+            parts = p.relative_to(ROOT).parts
+            # Nexus layout: packages/<name>/<version>/<file>
+            if len(parts) >= 2 and parts[-2] == version:
+                name = parts[-3] if len(parts) >= 3 else name
+            normalized = pypi_scan.normalize_name(name)
+            key = normalized + "@" + version
+            rec = records.setdefault(key, {"name": normalized, "version": version})
+            if name != normalized:
+                rec.setdefault("source_name", name)
+            meta = pypi_scan.read_metadata(p)
+            if meta:
+                rec.setdefault("license", meta["license"])
+                rec["dependencies"] = ",".join(meta["requires"])
+                if meta["summary"]:
+                    rec.setdefault("description", meta["summary"])
+            rec["tarball_path"] = str(p.relative_to(ROOT))
+            rec["tarball_size"] = p.stat().st_size
+            rec["sha256"] = sha256(p)
+            rec["tarball_file"] = p.name
+            rec.setdefault("license", "UNKNOWN")
+            rec["source"] = "metadata"
+        except OSError as e:
+            log.warning("Cannot scan %s: %s", p, e)
+        finally:
+            progress("hashing", i, len(files), p.name)
+    return records, len(records), 0
+
 def discover():
+    if PYPI:
+        return discover_pypi()
     records = {}
     json_files = list(ROOT.rglob("*.json"))
     progress("discovering", 0, len(json_files), "reading package metadata")
@@ -229,7 +278,7 @@ def severity(v):
     return s.upper() if isinstance(s, str) and s.upper() in RANK else "UNKNOWN"
 
 def query_osv(batch):
-    payload = {"queries": [{"package": {"name": r["name"], "ecosystem": "npm"}, "version": r["version"]} for r in batch]}
+    payload = {"queries": [{"package": {"name": r["name"], "ecosystem": ECOSYSTEM}, "version": r["version"]} for r in batch]}
     req = urllib.request.Request(OSV_URL, data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "User-Agent": "verdaccio-supply-chain/1.0"}, method="POST")
     error = None
@@ -319,7 +368,7 @@ def build_report(records, tarballs, skipped):
             r["is_latest"] = True
     report = {
         "schema": "verdaccio-supply-chain-report/v1", "generated_at": now(),
-        "scan_mode": "full", "scan_root": str(ROOT), "scan_state": "complete",
+        "scan_mode": "full", "scan_root": str(ROOT), "scan_state": "complete", "ecosystem": ECOSYSTEM,
         "summary": {"unique_packages": 0, "package_versions": len(items),
           "tarballs_scanned": tarballs, "tarballs_skipped_oversize": skipped,
           "versions_with_vulnerabilities": 0, "vulnerability_findings": 0,
@@ -429,7 +478,7 @@ def write_json(report, path):
     """Stream the JSON report so a huge report never becomes one giant string."""
     with path.open("w", encoding="utf-8") as fh:
         fh.write("{\n")
-        for key in ("schema", "generated_at", "scan_mode", "scan_root", "scan_state"):
+        for key in ("schema", "generated_at", "scan_mode", "scan_root", "scan_state", "ecosystem"):
             if key in report:
                 fh.write(f"  {json.dumps(key)}: {json.dumps(report[key], ensure_ascii=False)},\n")
         summary = json.dumps(report["summary"], ensure_ascii=False, indent=2)

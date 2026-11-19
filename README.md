@@ -143,6 +143,36 @@ How the portal stays usable with a huge report:
 - the JSON report is written incrementally, the HTML rows are streamed and dependencies are kept compact in memory,
 - the peak RSS of every scan is logged (`peak_rss=…MB`).
 
+## PyPI repositories
+
+The scanner also works on Python distributions. Set `SCAN_ECOSYSTEM=PyPI` and point `SCAN_ROOT` at the blob store of a Nexus pypi repository (or any PyPI cache):
+
+```yaml
+  pypi-supply-chain:
+    build: .
+    profiles: ["pypi"]
+    environment:
+      SCAN_ROOT: /pypi-data
+      SCAN_ECOSYSTEM: PyPI
+      REPORT_DIR: /reports
+      OSV_API_URL: https://api.osv.dev/v1/querybatch
+      NTFY_TOPIC: pub_abc
+    ports:
+      - "8081:8080"
+    volumes:
+      - /nexus-data/repository/pypi-group/packages:/pypi-data:ro
+      - ./pypi-reports:/reports
+```
+
+```bash
+docker compose -f compose.yml --profile pypi up -d --build
+```
+
+- the Nexus layout `packages/<name>/<version>/<file>` is understood, the file name is parsed as well (PEP 427 wheel, PEP 625 sdist),
+- package names are normalized per PEP 503, which is what the OSV `PyPI` ecosystem expects,
+- the license and the requirements are read from `METADATA` (wheel) or `PKG-INFO` (sdist),
+- the SHA-256 of every cached distribution is recorded, the report portal and the ntfy alert work exactly like for npm.
+
 ## Vulnerability severity
 
 A gateway that only returns advisory IDs (no severity) makes every finding look harmless. The scanner therefore resolves the severity of every advisory that arrives without it:
