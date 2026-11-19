@@ -55,7 +55,7 @@ button:hover{background:#254a99}a{color:#315fbd}.hint{color:#68758b;font-size:13
 footer.foot{margin:26px auto 32px;padding:0 18px;display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;color:#8794a8;font-size:12px;letter-spacing:.2px}footer.foot b{color:#68758b;font-weight:600}
 footer.foot .refresh{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}footer.foot .refresh select{padding:5px 8px;border:1px solid #ccd4e2;border-radius:7px;background:#fff;color:#46536b;font-size:12px}footer.foot .refresh label{color:#68758b}
 @media (max-width:640px){main{padding:0 10px;margin:14px auto}header{padding:10px 12px}.copy{font-size:10.5px;padding:5px 11px}footer.foot{flex-direction:column;gap:10px}}
-</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></div><div class="copy">Copyright &copy; 2026 <b>AIFE in FEIT</b></div></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">SBOM: Supply Chain Security</a> · scan progress</h1><p id="state">loading…</p></div><div class="copy">Copyright &copy; 2026 <b>AIFE in FEIT</b></div></header>
 <main><section class="card"><div class="bar"><span id="fill"></span></div>
 <table><tr><th>Current scan</th><td id="cur">-</td></tr>
 <tr><th>Phase</th><td id="phase">-</td></tr>
@@ -84,7 +84,7 @@ function appDir(){
 const dir=appDir();
 const base=new URL(dir,location.href).href;
 const api=new URL(dir+'api/scan',location.href).href;
-document.querySelectorAll('a[data-home]').forEach(function(a){a.href=dir;});
+document.querySelectorAll('a[data-home]').forEach(function(a){a.href=dir+'?q=&scope=relevant&eco=&risk=CRITICAL';});
 document.querySelectorAll('a[data-rel]').forEach(function(a){a.href=new URL(dir+a.getAttribute('data-rel'),location.href).href;});
 const token=new URLSearchParams(location.search).get('token');
 const withToken=u=>token?u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(token):u;
@@ -148,7 +148,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 .critical,.high{background:#fdeaea;color:#8d1b2c}.medium{background:#fff7df;color:#7a5600}.low{background:#e9f7ee;color:#14653a}.unknown{background:#eef1f6;color:#4a566b}
 .reviewed{opacity:.45}.reviewed td:nth-child(2){text-decoration:line-through}
 .checkbox{width:17px;height:17px}.links a{margin-right:12px}
-</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag {{level_class}}">{{level}}</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">SBOM: Supply Chain Security</a> <span class="tag {{level_class}}">{{level}}</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="panel"><div class="toolbar">
 <input id="key" type="password" placeholder="API key for review (saved in this browser)">
 <button id="savekey" type="button">Save key</button>
@@ -172,7 +172,7 @@ function appDir(){{
   return p+'/';
 }}
 var DIR=appDir();
-document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR;}});
+document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR+'?q=&scope=relevant&eco=&risk=CRITICAL';}});
 document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=DIR+a.getAttribute('data-rel');}});
 const KEY=localStorage.getItem('sbom_api_key')||'';
 document.getElementById('key').value=KEY;
@@ -211,7 +211,7 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){
 
 RISK_INDEX_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security · risks</title><style>__STYLE__</style></head>
-<body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
+<body><header><div class="headleft"><h1><a data-home="1" href="?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><h2>Findings per severity level</h2><p class="meta">{{links}}</p>
 <div class="meta">JSON export: {{exports}}</div></section></main>
@@ -230,7 +230,7 @@ function appDir(){{
   return p+'/';
 }}
   var dir=appDir();
-  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
+  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir+'?q=&scope=relevant&eco=&risk=CRITICAL';}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
 }})();
 
@@ -256,7 +256,7 @@ REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 <title>SBOM: Supply Chain Security · reviewed</title><style>__STYLE__
 .reviewed td:nth-child(2){text-decoration:line-through}
 </style></head>
-<body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag unknown">reviewed</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
+<body><header><div class="headleft"><h1><a data-home="1" href="?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">SBOM: Supply Chain Security</a> <span class="tag unknown">reviewed</span></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards">{{cards}}</section>
 <section class="panel"><div class="toolbar">
 <input id="key" type="password" placeholder="API key for review (saved in this browser)">
@@ -281,7 +281,7 @@ function appDir(){{
   return p+'/';
 }}
 var DIR=appDir();
-document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR;}});
+document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR+'?q=&scope=relevant&eco=&risk=CRITICAL';}});
 document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=DIR+a.getAttribute('data-rel');}});
 const KEY=localStorage.getItem('sbom_api_key')||'';
 document.getElementById('key').value=KEY;
@@ -394,7 +394,7 @@ footer.foot .refresh label{color:#68758b}
  .big{font-size:32px}
  footer.foot{margin:20px auto 24px;padding:0 12px;flex-direction:column;gap:10px}
 }
-</style></head><body><header><div class="headleft"><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
+</style></head><body><header><div class="headleft"><h1><a data-home="1" href="?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></div><div class="copy">Copyright &copy; {{year}} <b>AIFE in FEIT</b></div></header>
 <main><section class="cards kpis">{{cards}}</section>
 {{dashboard}}
 <section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
@@ -423,7 +423,7 @@ function appDir(){{
   return p+'/';
 }}
   var dir=appDir();
-  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir;}});
+  document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=dir+'?q=&scope=relevant&eco=&risk=CRITICAL';}});
   document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=dir+a.getAttribute('data-rel');}});
 }})();
 
