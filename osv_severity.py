@@ -221,7 +221,10 @@ def lookup(vid):
     cache = _cache()
     cached = cache.get_advisory(vid) if cache else None
     if cached is not None:
-        return cached
+        # a cached unknown is resolved again, the alias may know the severity now
+        if cached.get("severity") and cached["severity"] != "UNKNOWN":
+            return cached
+        log.debug("Cached severity of %s is unknown, it is resolved again", vid)
     cache = _cache()
     try:
         record = fetch_detail(vid)
