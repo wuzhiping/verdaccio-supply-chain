@@ -705,6 +705,9 @@ def write_risk_files(report):
     directory.mkdir(parents=True, exist_ok=True)
     buckets = {level: [] for level in RISK_LEVELS}
     for r in report["packages"]:
+        # only the versions that matter for this registry: cached or the newest one
+        if not (r.get("tarball_file") or r.get("is_latest")):
+            continue
         eco = r.get("ecosystem", ECOSYSTEM)
         for v in r.get("vulnerabilities", []):
             if v.get("reviewed"):

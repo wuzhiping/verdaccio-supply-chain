@@ -252,7 +252,12 @@ reports/risks/low.json        reports/risks/unknown.json
 Each file holds `level`, `generated_at`, `count` and the `findings` (package, version, ecosystem,
 registry, advisory, severity, score, summary, sha256, tarball, cached, latest).
 
-The portal serves the same data as a table, one page per severity level:
+Only the **relevant** versions are stored, the same scope the portal uses by default: a version
+with a cached tarball or the newest version of its package. The advisories of the old versions
+that nobody installs any more stay in the full report, they are not part of the risk files.
+
+The portal serves the same data as a table, one page per severity level, with the same scope
+(cached or newest versions only):
 
 ```
 /risk            overview with the count per level

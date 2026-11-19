@@ -412,7 +412,9 @@ def render_risk_index():
     rows = INDEX.rows() if INDEX else []
     reviewed = REVIEWS.keys()
     counts = {}
-    for name, version, _risk, _lic, _tarball, _sha, _deps, links, _hay, _cached, _latest, eco in rows:
+    for name, version, _risk, _lic, _tarball, _sha, _deps, links, _hay, cached, latest, eco in rows:
+        if not (cached or latest):
+            continue
         for link in links:
             level = (link.get("s") or "UNKNOWN").upper()
             key = review_store.finding_key(eco, name, version, link.get("i", ""))
@@ -424,7 +426,8 @@ def render_risk_index():
     exports = " · ".join(f'<a data-rel="risks/{l.lower()}.json" href="risks/{l.lower()}.json">{l.lower()}.json</a>'
                          for l in RISK_LEVELS)
     html = RISK_INDEX_HEAD
-    for key, value in {"subtitle": "Findings per severity level, reviewed findings are not counted",
+    for key, value in {"subtitle": "Findings per severity level · cached or newest versions only · "
+                                   "reviewed findings are not counted",
                        "cards": cards, "links": "", "exports": exports}.items():
         html = html.replace("{{" + key + "}}", value)
     missing = sorted(set(re.findall(r"\{\{(\w+)\}\}", html)))
@@ -445,6 +448,8 @@ def render_risk_page(level, query):
         page = 1
     findings = []
     for name, version, _risk, _lic, _tarball, sha, _deps, links, haystack, cached, latest, eco in rows:
+        if not (cached or latest):
+            continue
         for link in links:
             if (link.get("s") or "").upper() != level:
                 continue
@@ -487,7 +492,8 @@ def render_risk_page(level, query):
     html = RISK_HEAD
     for key, value in {
             "level": level, "title": f"Risks · {level}",
-            "subtitle": f"{len(findings)} findings at {level} · reviewed findings leave the statistics and the alerts",
+            "subtitle": f"{len(findings)} findings at {level} · cached or newest versions only · "
+                        f"reviewed findings leave the statistics and the alerts",
             "rows": "\n".join(body) or '<tr><td colspan="8">No findings.</td></tr>',
             "pager": "", "nav": nav, "exports": exports,
             "show_label": "on" if show_reviewed else "off",
