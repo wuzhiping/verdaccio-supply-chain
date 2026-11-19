@@ -260,9 +260,11 @@ The portal serves the same data as a table, one page per severity level, with th
 (cached or newest versions only):
 
 ```
-/risk            overview with the count per level
-/risk/CRITICAL   the critical findings, paginated
+/risk              overview with the count per level and per reviewed level
+/risk/CRITICAL     the critical findings, paginated
 /risk/HIGH?page=2
+/reviewed          every reviewed finding, untick a row to put it back
+/reviewed?level=HIGH
 ```
 
 A finding can be marked as **reviewed** with the checkbox in the first column. Reviewed findings
@@ -271,8 +273,12 @@ A finding can be marked as **reviewed** with the checkbox in the first column. R
 - disappear from the risk pages and from the risk files,
 - and are not pushed to ntfy any more.
 
-The state is kept in `reports/risks/reviewed.json` and is applied on the next scan. Marking a
-finding needs the review API key, it is sent in the `X-API-Key` header:
+The state is kept in `reports/risks/reviewed.json` and is applied on the next scan. The portal
+shows how many findings are reviewed per level and the page `/reviewed` lists all of them, a
+finding that is no longer part of the current index is marked as `not in the index` there, so it
+can be cleaned up.
+
+Marking a finding needs the review API key, it is sent in the `X-API-Key` header:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|

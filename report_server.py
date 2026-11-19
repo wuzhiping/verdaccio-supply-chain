@@ -21,6 +21,7 @@ SCAN_PATH = "/api/scan"
 SCAN_STATUS_PATHS = (SCAN_PATH, SCAN_PATH + "/status")
 PROGRESS_PATH = "/progress"
 RISK_PATH = "/risk"
+REVIEWED_PATH = "/reviewed"
 REVIEW_API_KEY = os.getenv("REVIEW_API_KEY", "123456").strip()
 RISK_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 REVIEWS = review_store.ReviewStore(str(ROOT / "risks"))
@@ -139,7 +140,7 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;f
 <a href="?show={{show_other}}">show reviewed: {{show_label}}</a>
 <span class="meta" id="pager">{{pager}}</span></div>
 <div class="tablewrap"><table><thead><tr><th></th><th>Package</th><th>Version</th><th>Advisory</th><th>Severity</th><th>Score</th><th>SHA256</th><th>Relevance</th></tr></thead>
-<tbody>{{rows}}</tbody></table></div>
+<tbody id="rows">{{rows}}</tbody></table></div>
 <div class="toolbar">{{nav}}</div>
 <div class="meta links">JSON export: {{exports}}</div></section></main>
 <script>
@@ -160,8 +161,10 @@ document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){
   box.addEventListener('change',async function(){
     const key=decodeURIComponent(box.getAttribute('data-k'));
     const row=box.closest('tr');
+    const apiKey=document.getElementById('key').value;
+    if(!apiKey){{alert('Please enter the API key first');box.checked=!box.checked;return;}}
     try{
-      const r=await fetch(DIR+'api/review',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':document.getElementById('key').value},body:JSON.stringify({key:key,reviewed:box.checked})});
+      const r=await fetch(DIR+'api/review',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':apiKey},body:JSON.stringify({key:key,reviewed:box.checked})});
       if(!r.ok){alert('Failed: HTTP '+r.status+' (API key needed)');box.checked=!box.checked;return;}
       row.classList.toggle('reviewed',box.checked);
     }catch(e){alert('Failed: '+e);box.checked=!box.checked;}
@@ -190,6 +193,50 @@ function appDir(){{
 }})();
 </script></body></html>"""
 
+REVIEWED_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SBOM: Supply Chain Security · reviewed</title><style>__STYLE__
+.reviewed td:nth-child(2){text-decoration:line-through}
+</style></head>
+<body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a> <span class="tag unknown">reviewed</span></h1><p>{{subtitle}}</p></header>
+<main><section class="cards">{{cards}}</section>
+<section class="panel"><div class="toolbar">
+<input id="key" type="password" placeholder="API key for review (saved in this browser)">
+<button id="savekey" type="button">Save key</button>
+<a href="?level={{other_level}}">only {{level_label}}</a>
+<span class="meta">{{pager}}</span></div>
+<div class="tablewrap"><table><thead><tr><th></th><th>Package</th><th>Version</th><th>Advisory</th><th>Severity</th><th>Score</th><th>SHA256</th><th>Relevance</th></tr></thead>
+<tbody id="rows">{{rows}}</tbody></table></div>
+<div class="toolbar">{{nav}}</div>
+<div class="meta links">{{exports}}</div></section></main>
+<script>
+function appDir(){{
+  var p=location.pathname;
+  var i=p.lastIndexOf('/reviewed');
+  if(i>=0)return p.slice(0,i+1);
+  if(p.charAt(p.length-1)==='/')return p;
+  return p+'/';
+}}
+var DIR=appDir();
+document.querySelectorAll('a[data-home]').forEach(function(a){{a.href=DIR;}});
+document.querySelectorAll('a[data-rel]').forEach(function(a){{a.href=DIR+a.getAttribute('data-rel');}});
+const KEY=localStorage.getItem('sbom_api_key')||'';
+document.getElementById('key').value=KEY;
+document.getElementById('savekey').addEventListener('click',function(){{localStorage.setItem('sbom_api_key',document.getElementById('key').value);}});
+document.querySelectorAll('#rows input[type=checkbox]').forEach(function(box){{
+  box.addEventListener('change',async function(){{
+    const key=decodeURIComponent(box.getAttribute('data-k'));
+    const row=box.closest('tr');
+    const apiKey=document.getElementById('key').value;
+    if(!apiKey){{alert('Please enter the API key first');box.checked=!box.checked;return;}}
+    try{{
+      const r=await fetch(DIR+'api/review',{{method:'POST',headers:{{'Content-Type':'application/json','X-API-Key':apiKey}},body:JSON.stringify({{key:key,reviewed:false}})}});
+      if(!r.ok){{alert('Failed: HTTP '+r.status+' (API key needed)');box.checked=!box.checked;return;}}
+      row.remove();
+    }}catch(e){{alert('Failed: '+e);box.checked=!box.checked;}}
+  }});
+}});
+</script></body></html>"""
+
 PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security</title><style>
 *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(49,95,189,.42) transparent}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
@@ -204,6 +251,7 @@ header h1{margin:0;font-size:23px;letter-spacing:.3px}header p{color:#bcd0ea;mar
 main{max-width:1450px;margin:22px auto;padding:0 18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
 .card.link{text-decoration:none;color:inherit}.card.link:hover{border-color:#315fbd;background:#f7faff}
 .card,.panel{background:white;border:1px solid #e3e8f0;border-radius:11px;padding:15px}.card small{display:block;color:#68758b}.card strong{display:block;font-size:26px;margin-top:4px}
+.card small.sub{margin-top:4px;font-size:11px;color:#7b879b}
 .riskblock{margin-top:20px}.riskblock h2{margin:0 0 10px;font-size:16px;color:#2b3a55}
 .riskcards .card{text-decoration:none;color:inherit;transition:transform .12s ease,box-shadow .12s ease}
 .riskcards .card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(20,40,70,.14)}
@@ -224,7 +272,8 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 </style></head><body><header><h1><a data-home="1" href="">SBOM: Supply Chain Security</a></h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
 <section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
-<p class="meta">Reviewed findings are not counted here, the risk pages show the details.</p></section>
+<p class="meta">Reviewed findings are not counted here, the risk pages show the details.
+<a data-rel="reviewed" href="reviewed">Reviewed findings: {{reviewed_total}}</a></p></section>
 <section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="">
 <input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="scope">{{scopes}}</select><select name="eco">{{ecos}}</select><select name="risk">{{risks}}</select>
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
@@ -250,6 +299,7 @@ function appDir(){{
 
 
 RISK_INDEX_HEAD = RISK_INDEX_HEAD.replace("__STYLE__", re.search(r"<style>(.*?)</style>", PORTAL_HEAD, re.S).group(1))
+REVIEWED_HEAD = REVIEWED_HEAD.replace("__STYLE__", re.search(r"<style>(.*?)</style>", PORTAL_HEAD, re.S).group(1))
 
 
 class IndexStore:
@@ -398,6 +448,7 @@ def render_portal(rows, summary, query, state=None):
         f'<a class="card {l.lower()}" href="risk/{l.lower()}" data-rel="risk/{l}"><small>{l}</small>'
         f'<strong>{esc(severity.get(l, 0))}</strong></a>'
         for l in RISK_LEVELS)
+    reviewed_total = len(REVIEWS.keys())
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
                     for v in ("", "CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE", "PENDING", "UNKNOWN"))
     ecosystems = sorted({r[11] for r in packages})
@@ -433,13 +484,11 @@ def render_portal(rows, summary, query, state=None):
             "subtitle": subtitle, "cards": card_html, "risk_cards": risk_cards,
             "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
             "count": count_text,
-            "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
+            "rows": body, "pager": pager, "reviewed_total": str(reviewed_total),
+            "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
         page = page.replace("{{" + key + "}}", value)
-    missing = sorted(set(re.findall(r"\{\{(\w+)\}\}", page)))
-    if missing:
-        log.error("Unreplaced placeholder in the report portal: %s", missing)
-    return page
+    return finish_page(page)
 
 
 def is_portal_path(path):
@@ -464,24 +513,116 @@ def risk_counts(rows, reviewed):
     return counts
 
 
+def finish_page(page, where="report portal"):
+    """Report the leftover placeholders and restore the braces of the template."""
+    missing = sorted(set(re.findall(r"\{\{(\w+)\}\}", page)))
+    if missing:
+        log.error("Unreplaced placeholder in the %s: %s", where, missing)
+    return page.replace("{{", "{").replace("}}", "}")
+
+
 def render_risk_index():
     """Overview of every severity level."""
     rows = INDEX.rows() if INDEX else []
     reviewed = REVIEWS.keys()
     counts = risk_counts(rows, reviewed)
+    done = {}
+    for f in reviewed_findings(rows, reviewed):
+        done[f["severity"]] = done.get(f["severity"], 0) + 1
     cards = "".join(f'<a class="card {l.lower()}" data-rel="risk/{l.lower()}" href="risk/{l.lower()}">'
-                    f'<small>{l}</small><strong>{counts.get(l, 0)}</strong></a>' for l in RISK_LEVELS)
+                    f'<small>{l}</small><strong>{counts.get(l, 0)}</strong>'
+                    f'<small class="sub">{done.get(l, 0)} reviewed</small></a>' for l in RISK_LEVELS)
     exports = " · ".join(f'<a data-rel="risks/{l.lower()}.json" href="risks/{l.lower()}.json">{l.lower()}.json</a>'
                          for l in RISK_LEVELS)
+    exports += f' · <a data-rel="reviewed" href="reviewed">reviewed.json ({sum(done.values())})</a>'
     html = RISK_INDEX_HEAD
     for key, value in {"subtitle": "Findings per severity level · cached or newest versions only · "
                                    "reviewed findings are not counted",
                        "cards": cards, "links": "", "exports": exports}.items():
         html = html.replace("{{" + key + "}}", value)
-    missing = sorted(set(re.findall(r"\{\{(\w+)\}\}", html)))
-    if missing:
-        log.error("Unreplaced placeholder on the risk index: %s", missing)
-    return html
+    return finish_page(html, "risk index")
+
+
+def reviewed_findings(rows, reviewed):
+    """The reviewed findings of the current index, plus the keys that are not in it any more."""
+    found = []
+    seen = set()
+    for name, version, _risk, _lic, _tarball, sha, _deps, links, _hay, cached, latest, eco in rows:
+        for link in links:
+            key = review_store.finding_key(eco, name, version, link.get("i", ""))
+            if key not in reviewed:
+                continue
+            seen.add(key)
+            found.append({
+                "key": key, "name": name, "version": version, "id": link.get("i", ""),
+                "severity": (link.get("s") or "UNKNOWN").upper(), "sha": sha,
+                "score": link.get("sc"),
+                "url": link.get("u") or ("https://osv.dev/vulnerability/" + link.get("i", "")),
+                "cached": cached, "latest": latest, "orphan": False})
+    for key in sorted(reviewed - seen):
+        eco, _, rest = key.partition(":")
+        name, _, version = rest.rpartition("@")
+        advisory = rest.rpartition(":")[2]
+        found.append({"key": key, "name": name, "version": version, "id": advisory,
+                      "severity": "UNKNOWN", "sha": "", "score": None, "url": "",
+                      "cached": False, "latest": False, "orphan": True})
+    return found
+
+
+def render_reviewed_page(query):
+    """All the findings that were marked as reviewed."""
+    rows = INDEX.rows() if INDEX else []
+    reviewed = REVIEWS.keys()
+    level = (query.get("level") or [""])[0].strip().upper()
+    try:
+        page = max(1, int((query.get("page") or ["1"])[0]))
+    except ValueError:
+        page = 1
+    findings = reviewed_findings(rows, reviewed)
+    counts = {}
+    for f in findings:
+        counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+    if level:
+        findings = [f for f in findings if f["severity"] == level]
+    pages = max(1, (len(findings) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(page, pages)
+    chunk = findings[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
+    body = []
+    for f in chunk:
+        relevance = []
+        if f["cached"]: relevance.append("cached")
+        if f["latest"]: relevance.append("latest")
+        if f["orphan"]: relevance.append("not in the index")
+        body.append("<tr>" +
+            f'<td><input type="checkbox" class="checkbox" checked data-k="{quote(f["key"], safe="")}"></td>'
+            f'<td>{esc(f["name"])}</td><td>{esc(f["version"])}</td>'
+            + (f'<td><a target="_blank" rel="noopener" href="{esc(f["url"])}">{esc(f["id"])}</a></td>'
+               if f["url"] else f'<td>{esc(f["id"])}</td>')
+            + f'<td><span class="risk {f["severity"].lower()}">{esc(f["severity"])}</span></td>'
+            f'<td>{esc(f["score"] if f["score"] is not None else "")}</td>'
+            f'<td><code>{esc((f["sha"] or "")[:16])}</code></td>'
+            f'<td>{esc(", ".join(relevance) or "historical")}</td></tr>')
+    cards = "".join(f'<a class="card {l.lower()}" href="reviewed?level={l}" data-rel="reviewed?level={l}">'
+                    f'<small>{l}</small><strong>{counts.get(l, 0)}</strong></a>' for l in RISK_LEVELS)
+    cards += f'<div class="card"><small>reviewed total</small><strong>{sum(counts.values())}</strong></div>'
+    nav = ""
+    if pages > 1:
+        prev = f'<a href="?level={level or ""}&amp;page={max(1, page - 1)}">&larr; Prev</a>' if page > 1 else "&larr; Prev"
+        nxt = f'<a href="?level={level or ""}&amp;page={min(pages, page + 1)}">Next &rarr;</a>' if page < pages else "Next &rarr;"
+        nav = f'<span class="meta">Page {page} / {pages}</span> {prev} &nbsp; {nxt}'
+    else:
+        nav = f'<span class="meta">Page {page} / {pages}</span>'
+    exports = " · ".join(f'<a data-rel="risks/{l.lower()}.json" href="risks/{l.lower()}.json">{l.lower()}.json</a>'
+                         for l in RISK_LEVELS)
+    html = REVIEWED_HEAD
+    for key, value in {
+            "subtitle": f"{len(findings)} reviewed findings · untick a row to put it back into the risk",
+            "cards": cards, "rows": "\n".join(body) or '<tr><td colspan="8">Nothing is reviewed yet.</td></tr>',
+            "pager": "", "nav": nav, "exports": exports,
+            "level": level, "level_label": level or "all levels",
+            "other_level": "" if level else "CRITICAL"}.items():
+        html = html.replace("{{" + key + "}}", value)
+    return finish_page(html, "reviewed page")
 
 
 def render_risk_page(level, query):
@@ -547,12 +688,18 @@ def render_risk_page(level, query):
             "show_label": "on" if show_reviewed else "off",
             "show_other": "0" if show_reviewed else "1"}.items():
         html = html.replace("{{" + key + "}}", value)
-    return html
+    return finish_page(html, "risk page")
 
 
 def matches(path, candidate):
     """Match a route by suffix so a reverse proxy path prefix keeps working."""
     return path == candidate or path.endswith(candidate)
+
+
+def reviewed_route(path):
+    """True when the path is the reviewed page."""
+    idx = path.rfind(REVIEWED_PATH)
+    return idx >= 0
 
 
 def risk_route(path):
@@ -706,6 +853,17 @@ class ReportHandler(SimpleHTTPRequestHandler):
         self._json(202, {"status": "accepted", "detail": detail, **CONTROL.status()})
 
     def _handle(self, body):
+        """Never drop the connection, a broken page answers with an error."""
+        try:
+            self._route(body)
+        except Exception:
+            log.exception("Request failed: %s", self.path)
+            try:
+                self._json(500, {"error": "internal_error", "path": self.path})
+            except Exception:
+                pass
+
+    def _route(self, body):
         parsed = urlparse(self.path)
         if matches(parsed.path, HEALTH_PATH):
             self._health()
@@ -723,6 +881,9 @@ class ReportHandler(SimpleHTTPRequestHandler):
             return
         if matches(parsed.path, PROGRESS_PATH):
             self._progress_page()
+            return
+        if reviewed_route(parsed.path):
+            self._html(render_reviewed_page(parse_qs(parsed.query)))
             return
         level = risk_route(parsed.path)
         if level is not None:
