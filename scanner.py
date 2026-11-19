@@ -28,6 +28,9 @@ for spec in os.getenv("SCAN_ROOTS", f"{ROOT}:{ECOSYSTEM}").split(","):
     else:
         path, _, eco = spec.partition(":")
     ROOT_SPECS.append((path, eco or "npm"))
+# The pypi repositories are read first, they are quick and their results show up early.
+ECOSYSTEM_ORDER = {"pypi": 0, "python": 0, "pip": 0, "npm": 1}
+ROOT_SPECS.sort(key=lambda spec: ECOSYSTEM_ORDER.get(spec[1].lower(), 2))
 REGISTRY_URL = {"npm": os.getenv("NPM_REGISTRY_URL", "").strip(),
                 "PyPI": os.getenv("PYPI_REGISTRY_URL", "").strip()}
 CACHE_DIR = os.getenv("OSV_CACHE_DIR", str(OUT / ".osv-cache"))

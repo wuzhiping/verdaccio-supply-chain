@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       # A pypi source is a nexus repository url, it is read through the REST API.
-      SCAN_ROOTS: "${SCAN_ROOTS:-/verdaccio-data:npm, http://10.17.1.201:24873/repository/pypi-group:PyPI}"
+      SCAN_ROOTS: "${SCAN_ROOTS:-http://10.17.1.201:24873/repository/pypi-group:PyPI, /verdaccio-data:npm}"
       NPM_REGISTRY_URL: ${NPM_REGISTRY_URL:-}
       PYPI_REGISTRY_URL: ${PYPI_REGISTRY_URL:-http://10.17.1.201:24873/repository/pypi-group}
       REPORT_DIR: /reports

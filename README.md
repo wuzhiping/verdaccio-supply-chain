@@ -149,7 +149,7 @@ One scanner instance can cover several registries and produce a single merged re
 
 ```yaml
     environment:
-      SCAN_ROOTS: "/verdaccio-data:npm, http://10.17.1.201:24873/repository/pypi-group:PyPI"
+      SCAN_ROOTS: "http://10.17.1.201:24873/repository/pypi-group:PyPI, /verdaccio-data:npm"
       NPM_REGISTRY_URL: "https://npm.feg.cn/"
       PYPI_REGISTRY_URL: "http://10.17.1.201:24873/repository/pypi-group"
     volumes:
@@ -157,6 +157,7 @@ One scanner instance can cover several registries and produce a single merged re
       - ./reports:/reports
 ```
 
+- the pypi sources are read first, they are quick and their results show up early in the progress page,
 - every package version carries its `ecosystem` and the `registry` it came from,
 - the OSV lookup is grouped per ecosystem, `npm` and `PyPI` records are never mixed in one request,
 - the portal shows an `Ecosystem` column and an ecosystem filter (`/?eco=PyPI`),
