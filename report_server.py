@@ -103,7 +103,8 @@ poll();setInterval(poll,2000);
 RISK_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security · risk {{level}}</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
-header{background:#172b4d;color:#fff;padding:22px max(20px,calc((100vw - 1450px)/2))}header h1{margin:0;font-size:22px}header p{color:#cbd6e8;margin:6px 0 0}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:#fff;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header h1{margin:0;font-size:22px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.panel{background:#fff;border:1px solid #e3e8f0;border-radius:11px;padding:16px;margin-bottom:14px}
 .toolbar{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;align-items:center}
 input[type=text],input[type=password]{padding:9px;border:1px solid #ccd4e2;border-radius:8px}
@@ -111,7 +112,7 @@ button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#f
 .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:900px}td,th{padding:9px;border-bottom:1px solid #e5e9f0;text-align:left;vertical-align:top}th{background:#f8f9fc;color:#526078}
 code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.meta{color:#68758b;font-size:12px}
 .risk{padding:2px 8px;border-radius:20px;background:#eef1f5;font-size:11px;font-weight:bold}
-.critical,.high{background:#ffe3e3;color:#a51d2d}.medium{background:#fff0d4;color:#8a5700}.low{background:#e3f4e8;color:#176b37}
+.critical,.high{background:#fdeaea;color:#8d1b2c}.medium{background:#fff7df;color:#7a5600}.low{background:#e9f7ee;color:#14653a}.unknown{background:#eef1f6;color:#4a566b}
 .reviewed{opacity:.45}.reviewed td:nth-child(2){text-decoration:line-through}
 .checkbox{width:17px;height:17px}.links a{margin-right:12px}
 </style></head><body><header><h1>{{title}}</h1><p>{{subtitle}}</p></header>
@@ -173,10 +174,20 @@ function appDir(){{
 PORTAL_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SBOM: Supply Chain Security</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f3f5f9;color:#172033;font:14px/1.5 system-ui,sans-serif}
-header{background:#172b4d;color:white;padding:25px max(20px,calc((100vw - 1450px)/2))}header h1{margin:0;font-size:24px}header p{color:#cbd6e8;margin:5px 0}
+header{position:sticky;top:0;z-index:30;background:linear-gradient(100deg,#0e2340 0%,#1a3a6d 58%,#24518f 100%);color:white;padding:16px max(20px,calc((100vw - 1450px)/2));box-shadow:0 3px 14px rgba(14,35,64,.32);border-bottom:3px solid #3f8fe0}
+header h1{margin:0;font-size:23px;letter-spacing:.3px}header p{color:#bcd0ea;margin:4px 0 0;font-size:13px}
 main{max-width:1450px;margin:22px auto;padding:0 18px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
 .card.link{text-decoration:none;color:inherit}.card.link:hover{border-color:#315fbd;background:#f7faff}
 .card,.panel{background:white;border:1px solid #e3e8f0;border-radius:11px;padding:15px}.card small{display:block;color:#68758b}.card strong{display:block;font-size:26px;margin-top:4px}
+.riskblock{margin-top:20px}.riskblock h2{margin:0 0 10px;font-size:16px;color:#2b3a55}
+.riskcards .card{text-decoration:none;color:inherit;transition:transform .12s ease,box-shadow .12s ease}
+.riskcards .card:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(20,40,70,.14)}
+.riskcards .card small{font-weight:bold;letter-spacing:.4px}
+.card.critical{background:#fdeaea;border-color:#f0b6bb;color:#8d1b2c}.card.critical small{color:#a3243a}
+.card.high{background:#fff0e2;border-color:#f3cfa4;color:#8a4a08}.card.high small{color:#a35c10}
+.card.medium{background:#fff7df;border-color:#f0dfa4;color:#7a5600}.card.medium small{color:#93701a}
+.card.low{background:#e9f7ee;border-color:#b6e0c4;color:#14653a}.card.low small{color:#1b7c4a}
+.card.unknown{background:#eef1f6;border-color:#d5dbe5;color:#4a566b}.card.unknown small{color:#5b687e}
 .panel{margin-top:16px}.toolbar{display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;align-items:center}
 input,select{padding:10px;border:1px solid #ccd4e2;border-radius:8px}input{flex:1;min-width:220px}
 button{padding:9px 14px;border:1px solid #ccd4e2;border-radius:8px;background:#fff;cursor:pointer}button:hover{background:#eef2f9}
@@ -187,6 +198,8 @@ code{font-size:11px;overflow-wrap:anywhere}a{color:#315fbd}.risk{padding:2px 8px
 .pending{color:#8a5700;font-size:11px;font-weight:bold}
 </style></head><body><header><h1>SBOM: Supply Chain Security</h1><p>{{subtitle}}</p></header>
 <main><section class="cards">{{cards}}</section>
+<section class="riskblock"><h2>Risk by severity</h2><div class="cards riskcards">{{risk_cards}}</div>
+<p class="meta">Reviewed findings are not counted here, the risk pages show the details.</p></section>
 <section class="panel"><h2>Package inventory</h2><form class="toolbar" method="get" action="">
 <input name="q" value="{{q}}" placeholder="Search package, version, hash, CVE…"><select name="scope">{{scopes}}</select><select name="eco">{{ecos}}</select><select name="risk">{{risks}}</select>
 <button type="submit">Search</button><span class="meta">{{count}}</span></form>
@@ -353,8 +366,8 @@ def render_portal(rows, summary, query, state=None):
              ("Dependency edges", summary.get("dependency_edges", 0))]
     card_html = "".join(f'<div class="card"><small>{esc(k)}</small><strong>{esc(v)}</strong></div>' for k, v in cards)
     severity = summary.get("severity") or {}
-    card_html += "".join(
-        f'<a class="card link" href="risk/{l.lower()}" data-rel="risk/{l}"><small>{l} findings</small>'
+    risk_cards = "".join(
+        f'<a class="card {l.lower()}" href="risk/{l.lower()}" data-rel="risk/{l}"><small>{l}</small>'
         f'<strong>{esc(severity.get(l, 0))}</strong></a>'
         for l in RISK_LEVELS)
     risks = "".join(f'<option value="{esc(v)}"{" selected" if v == risk else ""}>{esc(v or "All severity")}</option>'
@@ -389,7 +402,8 @@ def render_portal(rows, summary, query, state=None):
                 f'OSV {"enabled" if summary.get("osv_enabled", True) else "disabled"}')
     page = PORTAL_HEAD
     for key, value in {
-            "subtitle": subtitle, "cards": card_html, "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
+            "subtitle": subtitle, "cards": card_html, "risk_cards": risk_cards,
+            "q": esc(q), "risks": risks, "scopes": scopes, "ecos": ecos,
             "count": count_text,
             "rows": body, "pager": pager, "schema": esc(summary.get("schema", "")),
             "size": esc(summary.get("report_size", "—")), "notice": notice}.items():
@@ -421,7 +435,7 @@ def render_risk_index():
             if key in reviewed:
                 continue
             counts[level] = counts.get(level, 0) + 1
-    cards = "".join(f'<a class="card link" data-rel="risk/{l.lower()}" href="risk/{l.lower()}">'
+    cards = "".join(f'<a class="card {l.lower()}" data-rel="risk/{l.lower()}" href="risk/{l.lower()}">'
                     f'<small>{l}</small><strong>{counts.get(l, 0)}</strong></a>' for l in RISK_LEVELS)
     exports = " · ".join(f'<a data-rel="risks/{l.lower()}.json" href="risks/{l.lower()}.json">{l.lower()}.json</a>'
                          for l in RISK_LEVELS)
