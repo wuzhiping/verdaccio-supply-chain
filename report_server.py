@@ -66,7 +66,7 @@ footer.foot .refresh{display:inline-flex;align-items:center;gap:7px;white-space:
 <tr><th>Previous scan</th><td id="last">-</td></tr>
 <tr><th>Updated</th><td id="updated" class="mono">-</td></tr></table></section>
 <section class="card"><button id="go">Run scan now</button> <span class="hint" id="gomsg"></span>
-<p><a id="report" data-rel="." href="./">Open latest report</a></p></section></main>
+<p><a id="report" data-rel="." href="./?q=&amp;scope=relevant&amp;eco=&amp;risk=CRITICAL">Open latest report</a></p></section></main>
 <footer class="foot"><span>Developed by <b>Ateam+</b></span><span class="refresh"><label for="refresh">auto refresh</label>
 <select id="refresh" title="How often the page reloads itself">
 <option value="60">1 min</option><option value="300">5 min</option>
@@ -88,7 +88,7 @@ document.querySelectorAll('a[data-home]').forEach(function(a){a.href=dir;});
 document.querySelectorAll('a[data-rel]').forEach(function(a){a.href=new URL(dir+a.getAttribute('data-rel'),location.href).href;});
 const token=new URLSearchParams(location.search).get('token');
 const withToken=u=>token?u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(token):u;
-$('report').href=base;
+$('report').href=base+'?q=&scope=relevant&eco=&risk=CRITICAL';
 async function poll(){
  try{
   const d=await (await fetch(withToken(api),{headers:{Accept:'application/json'}})).json();
